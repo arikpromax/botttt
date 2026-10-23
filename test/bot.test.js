@@ -235,6 +235,14 @@ describe("фото → PDF і JPG", () => {
     assert.equal(h.images.calls.length, 0);
   });
 
+  it("під звичайним фото підказує надсилати файлом, під файлом — ні", async () => {
+    const h = harness();
+    const [photoMenu] = await h.photo(300 * KB);
+    assert.match(photoMenu.payload.text, /надішли фото <b>файлом<\/b>: скріпка → Файл/);
+    const [fileMenu] = await h.post({ document: { file_id: "f", file_unique_id: "f", file_name: "a.jpg", mime_type: "image/jpeg", file_size: 300 * KB } });
+    assert.doesNotMatch(fileMenu.payload.text, /скріпка → Файл/);
+  });
+
   it("PNG-файл → кнопка «У JPG» і перетворення через Cloudflare Images", async () => {
     const h = harness({ fileBytes: 2 * MB });
     const [menu] = await h.post({ document: { file_id: "png", file_unique_id: "p", file_name: "скрін.png", mime_type: "image/png", file_size: 2 * MB } });

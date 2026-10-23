@@ -203,7 +203,10 @@ export function createBot(token, { channel, images, albums = null, albumWait = 2
     }
     if (target) return compress(msg, image, target);
     const choices = sizeChoices(image.size);
-    await send(msg.chat.id, choices.length ? t.photoMenu(image.size, image.width, image.height) : t.photoMenuSmall(image.size), {
+    const text = choices.length
+      ? t.photoMenu(image.size, image.width, image.height, image.isDoc)
+      : t.photoMenuSmall(image.size, image.isDoc);
+    await send(msg.chat.id, text, {
       ...reply(msg), reply_markup: photoKeyboard(image, choices),
     });
   }
