@@ -13,7 +13,7 @@ if (!BOT_TOKEN || !WORKER_URL || !WEBHOOK_SECRET) {
 const api = new Api(BOT_TOKEN);
 await api.setWebhook(`${WORKER_URL.replace(/\/$/, "")}/webhook`, {
   secret_token: WEBHOOK_SECRET,
-  allowed_updates: ["message", "callback_query"],
+  allowed_updates: ["message", "callback_query", "pre_checkout_query"], // pre_checkout_query — оплата за Stars
   drop_pending_updates: true,
 });
 await api.setMyCommands(COMMANDS);

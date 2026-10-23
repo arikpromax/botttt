@@ -186,6 +186,36 @@ export const t = {
       `\n\n<i>Знеособлено: лише хеші, без імен та ідентифікаторів. Записи старші за 90 днів видаляються.</i>`;
   },
   statsFailed: "Не вдалося зібрати статистику — подивись журнал воркера.",
+  // ---- Магазин гри за Telegram Stars ----
+  shopThanks: (title) => `<b>Оплату отримано!</b> ${esc(title)} — уже в грі. Повертайся й тапай!`,
+  shopNoPlayer: "Оплату отримано, але гравця не знайдено. Напиши /paysupport — повернемо Stars.",
+  shopBadInvoice: "Цей рахунок застарів. Відкрий гру й спробуй ще раз.",
+  shopCantBuy: {
+    freeze_max: "У тебе вже 3 захисти вогника — більше не потрібно.",
+    full: "Енергія й так повна — купи, коли вона скінчиться.",
+    no_player: "Спершу відкрий гру.",
+  },
+  paySupport:
+    `<b>Допомога з оплатою</b>\nУ грі Ara Farm за Telegram Stars можна купити бусти: повну енергію, турбо, ` +
+    `прискорене відновлення, захист вогника. Покупка діє одразу після оплати.\n\n` +
+    `Якщо щось пішло не так (оплатив, а буст не з'явився, чи купив помилково) — напиши в коментарях каналу @arawebsite ` +
+    `або власнику бота: перевіримо й за потреби повернемо Stars.`,
+  starsReport: (r) => {
+    const names = { energy: "Повна енергія", turbo10: "Турбо ×10", regen2: "Відновлення ×2", freeze: "Захист вогника" };
+    const n = (x) => new Intl.NumberFormat("uk-UA").format(x);
+    const by = Object.entries(r.byProduct).sort((a, b) => b[1] - a[1]).map(([p, s]) => `${names[p] ?? p} — ${n(s)}`).join("\n");
+    const recent = r.recent.map((x) =>
+      `${new Date(x.created_at).toLocaleDateString("uk-UA", { timeZone: "Europe/Kyiv" })} · ${names[x.product] ?? x.product} · ${x.stars}${x.refunded ? " · повернено" : ""}\n<code>${esc(x.charge_id)}</code>`).join("\n");
+    return `<b>Магазин гри: Telegram Stars</b>\nСьогодні: ${n(r.today)} · 7 днів: ${n(r.week)} · усього: ${n(r.total)} (${n(r.count)} покупок)\n\n` +
+      (by ? `<b>За товарами</b>\n${by}\n\n` : "") +
+      (recent ? `<b>Останні платежі</b> (id — для /refund)\n${recent}\n\n` : "") +
+      `<i>Stars виводяться в TON через Fragment: @BotFather → бот → Balance (Telegram тримає їх ~21 день). ` +
+      `Цими TON можна платити гравцям — став /budget як частку доходу.</i>`;
+  },
+  refundUnknown: "Такого платежу немає. Напиши /refund і id з /stars.",
+  refundAlready: "Цей платіж уже повернено.",
+  refundDone: (stars) => `Повернено ${stars} Stars.`,
+
   // ---- Виплати TON у грі ----
   payoutStatus: (s, pendingCount, pendingTon, todayTon) =>
     `<b>Виплати TON у грі: ${s.enabled ? "увімкнено" : "вимкнено"}</b>\n` +

@@ -17,6 +17,8 @@ import { esc, formatSize, t } from "./texts.js";
 import { cipherWord } from "./game/cipher.js";
 import { kyivDay } from "./game/rules.js";
 import { formatTon } from "./game/payouts.js";
+import { SHOP, cantBuy } from "./game/rules.js";
+import { grantPurchase, parsePayload } from "./game/shop.js";
 
 const HTML = { parse_mode: "HTML", link_preview_options: { is_disabled: true } };
 const MEMBER = new Set(["creator", "administrator", "member"]);
@@ -27,7 +29,10 @@ const FILE_LIMIT = 20 * 1024 * 1024; // бот може отримати фай�
 const STICKER_EMOJI = "🙂"; // Telegram вимагає емодзі для кожного стікера; змінити можна в @Stickers
 const MOSAIC_EMOJI = "🧩"; // так клітинки мозаїки виглядають там, де власні емодзі не показуються
 
-export const COMMANDS = [{ command: "start", description: "Що вміє бот" }];
+export const COMMANDS = [
+  { command: "start", description: "Що вміє бот" },
+  { command: "paysupport", description: "Допомога з оплатою в грі" },
+];
 export const OWNER_COMMANDS = [
   ...COMMANDS,
   { command: "stats", description: "Статистика (бачиш лише ти)" },
@@ -36,6 +41,8 @@ export const OWNER_COMMANDS = [
   { command: "rate", description: "Курс: монет за 1 TON" },
   { command: "minton", description: "Мінімальна виплата, TON" },
   { command: "budget", description: "Бюджет виплат на день, TON" },
+  { command: "stars", description: "Скільки Stars заробила гра" },
+  { command: "refund", description: "Повернути платіж: /refund id" },
 ];
 
 // channel — «@username» каналу для обов'язкової підписки; images — Cloudflare Images (env.IMAGES);
@@ -43,10 +50,11 @@ export const OWNER_COMMANDS = [
 // stats — знеособлена статистика (stats.js); ownerId — Telegram id власника, лише йому доступна /stats;
 // appUrl — адреса Mini App (гра Ara Farm) для кнопки «Грати» в привітанні; cipherSecret — секрет шифру дня гри;
 // onFeature(userId, feature) — позначка для завдань гри («зроби QR-код у боті» тощо);
-// payouts / players — виплати TON у грі (game/payouts.js, game/store.js): керує ними власник.
+// payouts / players — виплати TON у грі (game/payouts.js, game/store.js): керує ними власник;
+// shop — { store, purchases }: магазин гри за Telegram Stars (game/shop.js).
 export function createBot(token, {
   channel, images, albums = null, stats = null, ownerId = null, appUrl = null, cipherSecret = null, onFeature = null,
-  payouts = null, players = null, albumWait = 2000, fetch = globalThis.fetch, ...config
+  payouts = null, players = null, shop = null, albumWait = 2000, fetch = globalThis.fetch, ...config
 }) {
   const bot = new Bot(token, config);
   bot.api.config.use(autoRetry());
@@ -544,6 +552,56 @@ export function createBot(token, {
   bot.command("cipher", async (ctx, next) => {
     if (!cipherSecret || !ownerId || ctx.from?.id !== ownerId) return next();
     await send(ctx.chat.id, t.cipherToday(await cipherWord(kyivDay(Date.now()), cipherSecret)));
+  });
+
+  // ---- Магазин гри за Telegram Stars ----
+  // Перед оплатою Telegram питає (до 10 с), чи все гаразд: рахунок наш, ціна та, товар ще має сенс.
+  bot.on("pre_checkout_query", async (ctx) => {
+    const q = ctx.preCheckoutQuery;
+    const order = parsePayload(q.invoice_payload);
+    const item = order && SHOP[order.product];
+    let error = null;
+    if (!shop || !item || order.userId !== q.from.id || q.currency !== "XTR" || q.total_amount !== item.stars) error = t.shopBadInvoice;
+    else {
+      const p = await shop.store.get(order.userId);
+      const reason = p ? cantBuy(p, order.product, Date.now()) : "no_player";
+      if (reason) error = t.shopCantBuy[reason] ?? t.shopBadInvoice;
+    }
+    await bot.api.answerPreCheckoutQuery(q.id, !error, error ? { error_message: error } : undefined);
+  });
+
+  // Оплачено: даємо товар (рівно один раз на платіж) і дякуємо.
+  bot.on("message:successful_payment", async (ctx) => {
+    const pay = ctx.message.successful_payment;
+    const order = parsePayload(pay.invoice_payload);
+    if (!order || !shop) return;
+    const result = await grantPurchase(shop, {
+      userId: order.userId, product: order.product, chargeId: pay.telegram_payment_charge_id, stars: pay.total_amount, now: Date.now(),
+    });
+    console.log(`Покупка за Stars: ${order.product} (${pay.total_amount}) — ${result}`);
+    if (result === "duplicate") return;
+    await send(ctx.chat.id, result === "granted" ? t.shopThanks(SHOP[order.product].title) : t.shopNoPlayer,
+      appUrl ? { reply_markup: new InlineKeyboard().webApp(t.playButton, appUrl) } : {});
+    await track(ctx.message, "purchase");
+  });
+
+  // Допомога з оплатою (Telegram вимагає таку команду від ботів, що продають за Stars).
+  bot.command("paysupport", (ctx) => send(ctx.chat.id, t.paySupport));
+
+  // Власнику: скільки Stars заробила гра й повернення платежу.
+  bot.command("stars", async (ctx, next) => {
+    if (!shop || !ownerId || ctx.from?.id !== ownerId) return next();
+    await send(ctx.chat.id, t.starsReport(await shop.purchases.report(Date.now())));
+  });
+  bot.command("refund", async (ctx, next) => {
+    if (!shop || !ownerId || ctx.from?.id !== ownerId) return next();
+    const chargeId = ctx.match.trim();
+    const purchase = chargeId ? await shop.purchases.get(chargeId) : null;
+    if (!purchase) return send(ctx.chat.id, t.refundUnknown);
+    if (purchase.refunded) return send(ctx.chat.id, t.refundAlready);
+    await bot.api.refundStarPayment(purchase.user_id, chargeId);
+    await shop.purchases.markRefunded(chargeId);
+    await send(ctx.chat.id, t.refundDone(purchase.stars));
   });
 
   // ---- Виплати TON у грі (лише власнику) ----

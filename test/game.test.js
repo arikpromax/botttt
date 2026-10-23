@@ -105,7 +105,7 @@ describe("гра: правила", () => {
   it("вогник: серія росте щодня, пропустив день — згорає; щоденна нагорода росте з серією", () => {
     const p = newPlayer(ANNA, T0);
     const DAY = 24 * 3600_000;
-    assert.deepEqual(touchStreak(p, T0), { lost: 0 });
+    assert.deepEqual(touchStreak(p, T0), { lost: 0, frozen: 0 });
     assert.equal(p.streak, 1);
     touchStreak(p, T0 + 3600_000);
     assert.equal(p.streak, 1, "у той самий день — не росте");
@@ -114,7 +114,7 @@ describe("гра: правила", () => {
     assert.equal(dailyReward(1), 500);
     assert.equal(dailyReward(3), 1500);
     assert.equal(dailyReward(8), 7500, "після 7-го дня — як 7-й");
-    assert.deepEqual(touchStreak(p, T0 + 9 * DAY), { lost: 8 }, "пропустив день — згоріло 8");
+    assert.deepEqual(touchStreak(p, T0 + 9 * DAY), { lost: 8, frozen: 0 }, "пропустив день — згоріло 8");
     assert.equal(p.streak, 1);
   });
 

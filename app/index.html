@@ -178,7 +178,7 @@
     .sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 41; max-width: 520px; margin: 0 auto;
       padding: 22px 18px calc(18px + env(safe-area-inset-bottom)); border-radius: 26px 26px 0 0; text-align: center;
       background: linear-gradient(180deg, #16305f, #0c1b3d); border: 1px solid var(--line); border-bottom: 0;
-      transform: translateY(105%); transition: transform 0.25s ease; }
+      transform: translateY(105%); transition: transform 0.25s ease; max-height: 90vh; overflow-y: auto; overscroll-behavior: contain; }
     .sheet.on { transform: none; }
     .sheet .x { position: absolute; top: 14px; right: 14px; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: rgba(255, 255, 255, 0.08); }
     .sheet .x .icon { width: 18px; height: 18px; }
@@ -280,6 +280,8 @@
     .field.turbo .per-tap { background: linear-gradient(90deg, #ff9a3c, #ff5a1a); }
     .float.turbo { color: #ffd257; font-size: 30px; }
     .boost-row { text-align: left; }
+    .star-btn { display: inline-flex; align-items: center; gap: 4px; background: linear-gradient(180deg, #ffcf4a, #f0a91a); color: #3b2600; }
+    .star-ic { width: 16px; height: 16px; flex: none; }
     .boost-row .small-btn[disabled] { background: #1b2c55; color: var(--hint); }
     .badges { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .badge-card { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px 12px; text-align: center; }
@@ -326,6 +328,7 @@
     <path d="M12.1 10.5c.2 1.6 2.4 2.5 2.4 4.9A2.5 2.5 0 0 1 12 18a2.5 2.5 0 0 1-2.5-2.5c0-1.3.7-2.2 1.3-2.7.1.8.5 1.3 1 1.4-.2-1.3.1-2.6.3-3.7z" fill="#fff3b0"/>
   </symbol>
   <symbol id="i-league" viewBox="0 0 24 24"><path d="M12 2.8l7.5 3v5.6c0 4.6-3.2 8-7.5 9.8-4.3-1.8-7.5-5.2-7.5-9.8V5.8z" fill="currentColor" fill-opacity=".22"/><path d="M12 7.5l1.4 2.9 3.1.4-2.3 2.2.6 3.1-2.8-1.5-2.8 1.5.6-3.1-2.3-2.2 3.1-.4z" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="star" viewBox="0 0 24 24"><path d="M12 2.6l2.8 5.9 6.4.8-4.7 4.4 1.2 6.4L12 17l-5.7 3.1 1.2-6.4-4.7-4.4 6.4-.8z" fill="#ffc83d" stroke="#e0a10e" stroke-width="1" stroke-linejoin="round"/></symbol>
   <symbol id="ton" viewBox="0 0 24 24"><circle cx="12" cy="12" r="12" fill="#0098ea"/><path d="M7.6 7.3h8.8c.8 0 1.3.9.9 1.6l-4.6 7.9a.8.8 0 0 1-1.4 0L6.7 8.9c-.4-.7.1-1.6.9-1.6zM12 7.3v10.2" fill="none" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></symbol>
   <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 11l8-6.5 8 6.5"/><path d="M6 9.5V20h12V9.5"/><path d="M10 20v-5h4v5"/></symbol>
   <symbol id="i-rocket" viewBox="0 0 24 24"><path d="M14.2 4.6C16.8 3.4 20 3.5 20 3.5s.1 3.2-1.1 5.8l-6.2 6.2-4.4-4.4z"/><path d="M8.6 10.9l-3.3.4-2 2 4.3 1.3M13.1 15.4l-.4 3.3-2 2-1.3-4.3M15.6 8.4h.01M6.2 17.8c-1.2 1.2-1.7 2.9-1.7 2.9s1.7-.5 2.9-1.7"/></symbol>
@@ -804,7 +807,7 @@
     $("g-name").textContent = S.name;
     $("g-streak").textContent = S.streak;
     $("g-flame").classList.toggle("off", !S.streak);
-    $("g-regen").textContent = `+${dec(S.regen)} щосекунди`;
+    $("g-regen").textContent = S.regenBoostUntil > serverNow() ? `+${dec(S.regen)}/с · ×2 ще ${hoursLeft(S.regenBoostUntil)}` : `+${dec(S.regen)} щосекунди`;
     $("g-passive").textContent = `${fmt(S.passive)}/год`;
     $("g-pertap").textContent = perTapLabel();
     renderUpgrades();
@@ -1120,7 +1123,8 @@
       <p>Заходь у гру щодня — і вогник горітиме, а щоденна нагорода ростиме. Пропустиш день — серія згорить і почнеться з нуля.</p>
       <div class="days">${days}</div>
       ${S.tasks.daily.done ? `<button class="btn" disabled>Сьогоднішню нагороду вже забрано</button>`
-        : `<button class="btn" id="claim-daily">Забрати +${fmt(S.tasks.daily.reward)}</button>`}`);
+        : `<button class="btn" id="claim-daily">Забрати +${fmt(S.tasks.daily.reward)}</button>`}
+      <div class="list" style="margin-top:14px;text-align:left">${shopRow("freeze", "tone-pink", "flame", `У запасі: ${S.streakFreezes} із ${S.shop.freeze.max}`)}</div>`);
     $("claim-daily")?.addEventListener("click", async (e) => {
       e.target.disabled = true;
       await flush();
@@ -1165,12 +1169,61 @@
       <p>Безкоштовні, щодня оновлюються.</p>
       <div class="list">
         ${row("energy", "tone-green", "i-battery", "Повна енергія", `Заповнює енергію до максимуму. Раз на годину.`, e.left, e.perDay, energyBtn)}
-        ${row("turbo", "tone-orange", "i-bolt", `Турбо ×${t.multiplier}`, `${t.seconds} секунд кожен тап ×${t.multiplier} і без енергії.`, t.left, t.perDay, turboBtn)}
+        ${row("turbo", "tone-orange", "i-bolt", "Турбо ×5", `${t.seconds} секунд кожен тап ×5 і без енергії.`, t.left, t.perDay, turboBtn)}
+      </div>
+      <h3 style="margin:20px 0 2px;font-size:18px">За Telegram Stars</h3>
+      <p style="margin:6px 0 12px">Коли безкоштовні скінчились — або щоб фармити швидше.</p>
+      <div class="list">
+        ${shopRow("energy", "tone-green", "i-battery")}
+        ${shopRow("turbo10", "tone-orange", "i-bolt")}
+        ${shopRow("regen2", "tone-teal", "i-regen", S.regenBoostUntil > serverNow() ? `Діє ще ${hoursLeft(S.regenBoostUntil)}` : "")}
+        ${shopRow("freeze", "tone-pink", "flame", `У запасі: ${S.streakFreezes} із ${S.shop.freeze.max}`)}
       </div>`);
+  }
+
+  // ---- Магазин за Telegram Stars ----
+  const hoursLeft = (until) => {
+    const h = Math.ceil((until - serverNow()) / 3600_000);
+    return `${h} ${plural(h, ["годину", "години", "годин"])}`;
+  };
+  const starIcon = `<svg class="star-ic"><use href="#star"/></svg>`;
+  function shopRow(product, tone, ic, extra = "") {
+    const item = S.shop[product];
+    const art = ic === "flame" ? `<svg class="icon"><use href="#flame"/></svg>` : icon(ic);
+    return `<div class="card row boost-row"><span class="tile ${tone}">${art}</span>
+      <span class="grow"><b>${item.title}</b><div class="meta">${item.about}</div>${extra ? `<div class="meta">${extra}</div>` : ""}</span>
+      <button class="small-btn star-btn" data-buy="${product}">${starIcon}${item.stars}</button></div>`;
+  }
+
+  async function buyStars(product, button) {
+    if (!inTelegram || !tg.openInvoice) return toast("Покупки працюють лише в Telegram");
+    button.disabled = true;
+    await flush();
+    const res = await call("invoice", { product }).catch(() => null);
+    if (!res?.link) {
+      button.disabled = false;
+      return toast({ full: "Енергія й так повна", freeze_max: "У тебе вже 3 захисти вогника" }[res?.error] ?? "Не вдалося — спробуй ще раз");
+    }
+    tg.openInvoice(res.link, async (status) => {
+      button.disabled = false;
+      if (status === "failed") return toast("Оплата не пройшла");
+      if (status !== "paid") return;
+      haptic("success");
+      closeAll();
+      toast(`Оплачено: ${S.shop[product].title}`);
+      // Товар видає бот, щойно Telegram підтвердить оплату, — підтягуємо стан кілька разів.
+      for (const ms of [1200, 2500, 5000]) {
+        await new Promise((r) => setTimeout(r, ms));
+        const me = await call("me").catch(() => null);
+        if (me?.state) adopt(me.state);
+      }
+    });
   }
   $("boosts").addEventListener("click", () => (haptic("select"), openBoosts()));
   $("g-ton").addEventListener("click", () => (haptic("select"), showTab("profile"), openPage("payouts")));
   $("sheet-body").addEventListener("click", async (e) => {
+    const buy = e.target.closest("[data-buy]");
+    if (buy) return buyStars(buy.dataset.buy, buy);
     const kind = e.target.closest("[data-boost]")?.dataset.boost;
     if (!kind) return;
     e.target.disabled = true;
@@ -1493,6 +1546,11 @@
       upgrades: { tap: { level: 1, value: 1, next: 2, cost: 10000 }, energy: { level: 1, value: 500, next: 1000, cost: 15000 },
         regen: { level: 1, value: 1, next: 1.5, cost: 30000 }, passive: { level: 1, value: 50, next: 300, cost: 20000 } },
       streak: 3, streakRewards: [500, 1000, 1500, 2500, 3500, 5000, 7500],
+      streakFreezes: 1, regenBoostUntil: now + 5 * 3600_000,
+      shop: { energy: { stars: 10, title: "Повна енергія", about: "Миттєво заповнює енергію до максимуму." },
+        turbo10: { stars: 25, title: "Турбо ×10", about: "30 секунд кожен тап дає ×10 монет і не витрачає енергію." },
+        regen2: { stars: 50, title: "Відновлення ×2 на добу", about: "24 години енергія відновлюється вдвічі швидше." },
+        freeze: { stars: 20, max: 3, title: "Захист вогника", about: "Пропустиш день — серія не згорить. До 3 захистів у запасі." } },
       tasks: Object.fromEntries([
         ["daily", "daily", 1500, 0, 0], ["taps", "daily", 1000, 640, 1000], ["chicken", "daily", 700, 0, 1], ["boost", "daily", 300, 0, 1],
         ["channel", "once", 1000, 0, 0], ["friends3", "once", 2500, 1, 3], ["tiktok", "once", 1000, 1, 1], ["photo", "once", 700, 1, 1],
@@ -1635,6 +1693,7 @@
     planChicken();
     // Одне, найважливіше повідомлення при вході.
     if (res.welcome) toast(`+${fmt(res.welcome)} монет за вхід за запрошенням`);
+    else if (res.streakFrozen) toast(`Захист вогника врятував серію: ${S.streak} ${plural(S.streak, ["день", "дні", "днів"])} поспіль`);
     else if (res.streakLost) toast(`Вогник згорів: серія була ${res.streakLost} ${plural(res.streakLost, ["день", "дні", "днів"])}. Починаємо знову!`);
     else if (!S.tasks.daily.done && S.streak >= 2) toast(`Вогник горить: ${S.streak} ${plural(S.streak, ["день", "дні", "днів"])} поспіль — забери нагороду`);
     else if (res.offline > 0) toast(`Поки тебе не було, ферма заробила +${fmt(res.offline)}`);

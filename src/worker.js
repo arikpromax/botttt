@@ -9,6 +9,7 @@ import { d1Players } from "./game/store.js";
 import { cipherPost, cipherWord } from "./game/cipher.js";
 import { CIPHER, kyivDay } from "./game/rules.js";
 import { d1Payouts } from "./game/payouts.js";
+import { d1Purchases } from "./game/shop.js";
 import { t } from "./texts.js";
 
 // Заявка на виплату — власнику в бот: кнопка оплати в Tonkeeper (сума й коментар уже заповнені) і рішення.
@@ -41,6 +42,16 @@ function setupGame(env) {
     secret: env.WEBHOOK_SECRET, // від нього залежить шифр дня
     payouts: d1Payouts(env.DB),
     notifyOwner: (w, p) => notifyOwner(env, w, p),
+    // Рахунок у Telegram Stars (валюта XTR, без платіжного провайдера).
+    async createInvoiceLink(params) {
+      const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/createInvoiceLink`, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(params),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.description);
+      return data.result;
+    },
+    appUrl: env.APP_URL,
     // Завдання «підпишись на канал»: питаємо в Telegram, чи людина в каналі.
     async checkMember(userId) {
       const url = `https://api.telegram.org/bot${env.BOT_TOKEN}/getChatMember?chat_id=${encodeURIComponent(env.CHANNEL)}&user_id=${userId}`;
@@ -67,6 +78,7 @@ function setup(env) {
       onFeature: env.DB ? (userId, feature) => d1Players(env.DB).markBotUse(userId, feature) : null,
       // Виплати TON у грі: власник керує командами й кнопками під заявками.
       payouts: env.DB ? d1Payouts(env.DB) : null,
+      shop: env.DB ? { store: d1Players(env.DB), purchases: d1Purchases(env.DB) } : null,
       players: env.DB ? d1Players(env.DB) : null,
     });
     await bot.init();

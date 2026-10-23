@@ -3,8 +3,9 @@
 import { verifyInitData } from "./auth.js";
 import { isCipher } from "./cipher.js";
 import { PAYOUT_RULES, checkWithdrawal, formatTon, normalizeAddress } from "./payouts.js";
+import { invoiceParams } from "./shop.js";
 import {
-  REWARDS, activateReferral, applyTaps, buyUpgrade, claimAchievement, claimChicken, claimCipher, claimTask, joinByInvite, kyivDay, newPlayer,
+  REWARDS, activateReferral, cantBuy, applyTaps, buyUpgrade, claimAchievement, claimChicken, claimCipher, claimTask, joinByInvite, kyivDay, newPlayer,
   publicState, settle, touchStreak, useBoost,
 } from "./rules.js";
 
@@ -13,9 +14,11 @@ const json = (data, status = 200) =>
 
 // store — d1Players / memoryPlayers; token — токен бота; checkMember(userId) — чи підписаний на канал;
 // botUsername — для посилання-запрошення; secret — для шифру дня;
-// payouts — d1Payouts / memoryPayouts; notifyOwner(withdrawal, player) — заявка на виплату власнику в бот.
+// payouts — d1Payouts / memoryPayouts; notifyOwner(withdrawal, player) — заявка на виплату власнику в бот;
+// createInvoiceLink(params) — рахунок у Stars через Bot API (→ посилання); appUrl — для картинки в рахунку.
 export function gameApi({
-  store, token, checkMember, botUsername, secret, payouts = null, notifyOwner = async () => {}, clock = () => Date.now(),
+  store, token, checkMember, botUsername, secret, payouts = null, notifyOwner = async () => {}, createInvoiceLink = null,
+  appUrl = null, clock = () => Date.now(),
 }) {
   // Гравець за даними Telegram; новий — створюємо. Прийшов за посиланням уперше в житті — запам'ятовуємо,
   // хто запросив (бонус тому нарахується, коли новачок пограє: activateReferral); хто видалив прогрес
@@ -61,8 +64,8 @@ export function gameApi({
         p.username = auth.user.username ?? null;
         p.photo = auth.user.photo_url ?? p.photo;
         p.premium = auth.user.is_premium ? 1 : 0;
-        const { lost } = touchStreak(p, now);
-        return { offline: settle(p, now), streakLost: lost >= 2 ? lost : 0 };
+        const { lost, frozen } = touchStreak(p, now);
+        return { offline: settle(p, now), streakLost: lost >= 2 ? lost : 0, streakFrozen: frozen };
       });
       // Виплати: щоб показати на балансі «≈ N TON» (лише коли виплати ввімкнено).
       const s = payouts ? await payouts.settings().catch(() => null) : null;
@@ -143,6 +146,17 @@ export function gameApi({
       const withdrawal = { id, coins, nano: check.nano, address: p.wallet, ton: formatTon(check.nano) };
       await notifyOwner(withdrawal, out.p).catch((err) => console.error("Заявку не надіслано власнику:", err.message));
       return reply(out, { withdrawal: { id, ton: withdrawal.ton } });
+    },
+
+    // Рахунок у Telegram Stars; товар видасть бот, коли прийде оплата (successful_payment).
+    async invoice(auth, body) {
+      const product = String(body.product);
+      const p = await store.get(auth.user.id);
+      if (!p) return json({ error: "no_player" }, 404);
+      const reason = cantBuy(p, product, clock());
+      if (reason) return json({ error: reason }, 409);
+      const icon = appUrl ? new URL("icon-180.png", appUrl).href : null;
+      return json({ link: await createInvoiceLink(invoiceParams(p.id, product, icon)) });
     },
 
     async friends(auth) {

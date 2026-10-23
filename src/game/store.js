@@ -9,6 +9,7 @@ const MUTABLE = [
   "cipher_day", "cipher_tries", "cipher_tries_day", "total_taps", "best_streak", "chickens_total", "ciphers_total",
   "achievements", "boost_energy_day", "boost_energy_count", "boost_energy_at", "turbo_day", "turbo_count", "turbo_until",
   "taps_day", "taps_today", "daily_tasks", "tasks_done", "bot_used", "site_open_at", "wallet", "ref_paid",
+  "turbo_start", "turbo_mult", "regen_boost_until", "streak_freezes",
 ];
 const ALL = ["id", ...MUTABLE, "created_at", "version"];
 

@@ -50,6 +50,40 @@ export const BOOSTS = {
 };
 const TURBO_GRACE_MS = 2000; // останні турбо-тапи доходять до сервера трохи пізніше
 
+// Магазин за Telegram Stars (ціни — у Stars). Монет напряму не продаємо: інакше Stars можна було б
+// «перегнати» в TON через виплати. Тексти — для рахунку в Telegram.
+export const SHOP = {
+  energy: { stars: 10, title: "Повна енергія", about: "Миттєво заповнює енергію до максимуму." },
+  turbo10: { stars: 25, seconds: 30, multiplier: 10, title: "Турбо ×10", about: "30 секунд кожен тап дає ×10 монет і не витрачає енергію." },
+  regen2: { stars: 50, hours: 24, title: "Відновлення ×2 на добу", about: "24 години енергія відновлюється вдвічі швидше." },
+  freeze: { stars: 20, max: 3, title: "Захист вогника", about: "Пропустиш день — серія не згорить. До 3 захистів у запасі." },
+};
+
+// Чи можна зараз купити (щоб Telegram не взяв Stars за те, що не спрацює). → null або причина.
+export function cantBuy(p, product, now) {
+  if (!Object.hasOwn(SHOP, product)) return "unknown";
+  if (product === "freeze" && p.streak_freezes >= SHOP.freeze.max) return "freeze_max";
+  if (product === "energy") {
+    settle(p, now);
+    if (p.energy >= value("energy", p.energy_lvl) - 1) return "full";
+  }
+  return null;
+}
+
+// Оплачено — даємо товар.
+export function applyPurchase(p, product, now) {
+  settle(p, now);
+  if (product === "energy") p.energy = value("energy", p.energy_lvl);
+  else if (product === "turbo10") {
+    const { seconds, multiplier } = SHOP.turbo10;
+    // Турбо вже йде — продовжуємо його; ні — починаємо зараз.
+    if (p.turbo_until <= now) p.turbo_start = now;
+    p.turbo_until = Math.max(now, p.turbo_until) + seconds * 1000;
+    p.turbo_mult = multiplier;
+  } else if (product === "regen2") p.regen_boost_until = Math.max(now, p.regen_boost_until) + SHOP.regen2.hours * 3600_000;
+  else if (product === "freeze") p.streak_freezes = Math.min(SHOP.freeze.max, p.streak_freezes + 1);
+}
+
 // Досягнення: stat — що рахуємо, goal — скільки треба, reward — нагорода (забрати в Профілі).
 export const ACHIEVEMENTS = [
   { id: "tap1k", stat: "taps", goal: 1_000, reward: 1_000 },
@@ -110,7 +144,8 @@ export function newPlayer(user, now) {
     total_taps: 0, best_streak: 0, chickens_total: 0, ciphers_total: 0, achievements: "",
     taps_day: null, taps_today: 0, daily_tasks: "", tasks_done: "", bot_used: "", site_open_at: 0, wallet: null,
     boost_energy_day: null, boost_energy_count: 0, boost_energy_at: 0,
-    turbo_day: null, turbo_count: 0, turbo_until: 0,
+    turbo_day: null, turbo_count: 0, turbo_until: 0, turbo_start: 0, turbo_mult: BOOSTS.turbo.multiplier,
+    regen_boost_until: 0, streak_freezes: 0,
     created_at: now, version: 0,
   };
 }
@@ -120,20 +155,28 @@ function give(p, amount) {
   p.earned += amount;
 }
 
+const daysBetween = (a, b) => Math.round((Date.parse(`${b}T12:00:00Z`) - Date.parse(`${a}T12:00:00Z`)) / 86_400_000);
+
 // Вогник: перший запит за день продовжує серію (якщо вчора гравець був) або починає заново.
-// → { lost } — скільки днів згоріло (0, якщо нічого).
+// Пропущені дні можуть закрити захисти вогника (купуються за Stars): кожен — один день.
+// → { lost, frozen } — скільки днів серії згоріло і скільки захистів витрачено.
 export function touchStreak(p, now) {
   const today = kyivDay(now);
-  if (p.streak_day === today) return { lost: 0 };
-  let lost = 0;
-  if (p.streak_day && p.streak_day === shiftDay(today, -1)) p.streak += 1;
-  else {
+  if (p.streak_day === today) return { lost: 0, frozen: 0 };
+  let lost = 0, frozen = 0;
+  const missed = p.streak_day ? daysBetween(p.streak_day, today) - 1 : Infinity;
+  if (missed === 0) p.streak += 1;
+  else if (missed <= p.streak_freezes) {
+    p.streak_freezes -= missed;
+    frozen = missed;
+    p.streak += 1;
+  } else {
     lost = p.streak;
     p.streak = 1;
   }
   p.streak_day = today;
   p.best_streak = Math.max(p.best_streak, p.streak); // для досягнень: згорілий вогник їх не забирає
-  return { lost };
+  return { lost, frozen };
 }
 export const dailyReward = (streak) => STREAK_REWARDS[Math.min(Math.max(streak, 1), STREAK_REWARDS.length) - 1];
 
@@ -141,7 +184,10 @@ export const dailyReward = (streak) => STREAK_REWARDS[Math.min(Math.max(streak, 
 export function settle(p, now) {
   touchStreak(p, now);
   const max = value("energy", p.energy_lvl);
-  p.energy = Math.min(max, p.energy + (value("regen", p.regen_lvl) * Math.max(0, now - p.energy_at)) / 1000);
+  // Під час купленого «відновлення ×2» енергія за ті мілісекунди рахується двічі.
+  const elapsed0 = Math.max(0, now - p.energy_at);
+  const boosted = Math.max(0, Math.min(now, p.regen_boost_until) - p.energy_at);
+  p.energy = Math.min(max, p.energy + (value("regen", p.regen_lvl) * (elapsed0 + boosted)) / 1000);
   p.energy_at = now;
 
   const rate = value("passive", p.passive_lvl);
@@ -168,7 +214,7 @@ export function applyTaps(p, taps, now, turboTaps = 0) {
   const from = Math.max(p.tap_at, now - TAP_WINDOW_MS);
   // Скільки тапів можна прийняти: за швидкістю пальця й за денним лімітом (проти ферм, що тапають цілодобово).
   const byTime = Math.min(Math.floor(((now - from) / 1000) * TAPS_PER_SECOND), MAX_TAPS_PER_SYNC, DAILY_TAP_LIMIT - p.taps_today);
-  const turboStart = p.turbo_until - BOOSTS.turbo.seconds * 1000;
+  const turboStart = p.turbo_start;
   const turboMs = Math.max(0, Math.min(now, p.turbo_until + TURBO_GRACE_MS) - Math.max(from, turboStart));
   const turbo = Math.max(0, Math.min(Math.floor(turboTaps) || 0, Math.floor((turboMs / 1000) * TAPS_PER_SECOND), byTime));
   const normal = Math.max(0, Math.min(Math.floor(taps) || 0, Math.floor(p.energy), byTime - turbo));
@@ -176,7 +222,7 @@ export function applyTaps(p, taps, now, turboTaps = 0) {
   p.tap_at = from + ((normal + turbo) / TAPS_PER_SECOND) * 1000; // використаний час «відра»
   p.total_taps += normal + turbo;
   p.taps_today += normal + turbo;
-  give(p, (normal + turbo * BOOSTS.turbo.multiplier) * value("tap", p.tap_lvl));
+  give(p, (normal + turbo * p.turbo_mult) * value("tap", p.tap_lvl));
   return normal + turbo;
 }
 
@@ -199,7 +245,7 @@ export function useBoost(p, kind, now) {
     if (p.turbo_day !== today) Object.assign(p, { turbo_day: today, turbo_count: 0 });
     if (p.turbo_count >= BOOSTS.turbo.perDay) return "limit";
     if (p.turbo_until > now) return "active";
-    p.turbo_until = now + BOOSTS.turbo.seconds * 1000;
+    Object.assign(p, { turbo_start: now, turbo_until: now + BOOSTS.turbo.seconds * 1000, turbo_mult: BOOSTS.turbo.multiplier });
     p.turbo_count += 1;
     return null;
   }
@@ -385,10 +431,12 @@ export function publicState(p, now) {
   return {
     id: p.id, name: p.name, photo: p.photo,
     coins: p.coins, earned: p.earned, ...leagueOf(p.earned), leagues: LEAGUES,
-    energy: Math.floor(p.energy), energyMax: value("energy", p.energy_lvl), regen: value("regen", p.regen_lvl),
+    energy: Math.floor(p.energy), energyMax: value("energy", p.energy_lvl),
+    regen: value("regen", p.regen_lvl) * (p.regen_boost_until > now ? 2 : 1), regenBoostUntil: p.regen_boost_until,
     perTap: value("tap", p.tap_lvl), passive: value("passive", p.passive_lvl), passiveCapHours: PASSIVE_CAP_HOURS,
     maxLevel: MAX_LEVEL, tapsPerSecond: TAPS_PER_SECOND,
     upgrades: { tap: upgrade("tap"), energy: upgrade("energy"), regen: upgrade("regen"), passive: upgrade("passive") },
+    streakFreezes: p.streak_freezes, shop: SHOP,
     streak: p.streak_day === today || p.streak_day === shiftDay(today, -1) ? p.streak : 0,
     streakRewards: STREAK_REWARDS,
     tasks: tasksState(p, now),
@@ -406,7 +454,8 @@ export function publicState(p, now) {
         left: BOOSTS.energy.perDay - (p.boost_energy_day === today ? p.boost_energy_count : 0),
       },
       turbo: {
-        perDay: BOOSTS.turbo.perDay, seconds: BOOSTS.turbo.seconds, multiplier: BOOSTS.turbo.multiplier, until: p.turbo_until,
+        perDay: BOOSTS.turbo.perDay, seconds: BOOSTS.turbo.seconds, until: p.turbo_until,
+        multiplier: p.turbo_until > now ? p.turbo_mult : BOOSTS.turbo.multiplier,
         left: BOOSTS.turbo.perDay - (p.turbo_day === today ? p.turbo_count : 0),
       },
     },
