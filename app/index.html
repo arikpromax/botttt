@@ -24,7 +24,9 @@
       color-scheme: dark;
     }
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-    html, body { margin: 0; min-height: 100%; }
+    /* Сама сторінка не прокручується (на iPhone у Telegram прокручена сторінка зсуває зону дотику відносно
+       малюнка) — прокручується лише #root усередині. */
+    html, body { margin: 0; height: 100%; overflow: hidden; }
     body {
       background: radial-gradient(130% 55% at 50% 0%, #143272 0%, #0a1838 48%, var(--bg) 100%) fixed var(--bg);
       color: var(--text);
@@ -39,6 +41,7 @@
     .plus { color: var(--green); font-weight: 700; }
 
     main { max-width: 520px; margin: 0 auto; padding: 12px 14px calc(var(--tabbar) + 20px + env(safe-area-inset-bottom)); }
+    #root { position: fixed; top: 0; bottom: 0; left: 0; right: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
     .tab { display: none; }
     .tab.active { display: block; animation: fade 0.18s ease; }
     @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
@@ -72,7 +75,7 @@
 
     /* ---- Гра ---- */
     #tab-game.active { display: flex; flex-direction: column; gap: 10px;
-      min-height: calc(var(--tg-viewport-stable-height, 100vh) - var(--tabbar) - 32px - env(safe-area-inset-bottom)); }
+      min-height: 100%; }
     .player { display: flex; align-items: center; gap: 12px; padding: 2px 2px 0; }
     .avatar { width: 46px; height: 46px; border-radius: 50%; flex: none; overflow: hidden; display: grid; place-items: center;
       background: linear-gradient(135deg, #3b6fd8, #7c4fe0); font-weight: 800; font-size: 17px; border: 2px solid rgba(255, 255, 255, 0.15); }
@@ -159,8 +162,8 @@
 
     /* ---- Нижнє меню ---- */
     .tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; display: grid; grid-template-columns: repeat(5, 1fr);
-      padding: 6px 6px calc(6px + env(safe-area-inset-bottom)); background: rgba(7, 16, 38, 0.94); border-top: 1px solid var(--line);
-      backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+      padding: 6px 6px calc(6px + env(safe-area-inset-bottom)); background: #071026; border-top: 1px solid var(--line);
+    }
     .tabbar button { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 0; color: var(--hint); font-size: 11px; font-weight: 600; }
     .tabbar button.on { color: var(--blue-hi); }
     .tabbar .icon { width: 25px; height: 25px; }
@@ -268,7 +271,7 @@
   <div><svg><use href="#coin"/></svg><p id="loading-text">Завантаження…</p></div>
 </div>
 
-<main>
+<main id="root">
   <!-- ГРА -->
   <section class="tab active" id="tab-game">
     <div class="demo" id="demo" hidden>Демо: прогрес не зберігається. Відкрий гру в Telegram — у боті @arawebsite_bot.</div>
@@ -322,7 +325,7 @@
         <path d="M0 302 Q140 280 280 300 T400 296 V330 H0z" fill="#69d17a"/>
       </svg>
       <div class="ring"></div>
-      <button class="big-coin" id="coin" aria-label="Тапнути монету"><svg><use href="#coin"/></svg></button>
+      <button class="big-coin" id="tap-coin" aria-label="Тапнути монету"><svg><use href="#coin"/></svg></button>
       <div class="per-tap" id="g-pertap">+1 монета за тап</div>
     </div>
   </section>
@@ -540,7 +543,7 @@
   // ---- Тапи ----
   // Лише одним пальцем: другий палець, поки перший на монеті, не рахується; і не частіше, ніж
   // ~12 разів на секунду (так само рахує сервер).
-  const coinEl = $("coin");
+  const coinEl = $("tap-coin"); // не плутати з малюнком монети <symbol id="coin">
   const MIN_TAP_MS = 85;
   let finger = null;
   let lastDown = 0;
@@ -850,7 +853,7 @@
   function showTab(name) {
     document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.id === `tab-${name}`));
     document.querySelectorAll("#tabbar button").forEach((b) => b.classList.toggle("on", b.dataset.tab === name));
-    window.scrollTo(0, 0);
+    $("root").scrollTo(0, 0);
     if (name === "friends") loadFriends();
     if (name !== "game") flush();
   }
@@ -951,6 +954,9 @@
         tg.setBottomBarColor?.("#071026");
       } catch {}
       tg.BackButton.onClick(closeAll);
+      // Якщо Telegram чи iOS таки зсунули саму сторінку (розгортання, зміна висоти), повертаємо її на місце.
+      tg.onEvent("viewportChanged", () => window.scrollTo(0, 0));
+      window.addEventListener("scroll", () => window.scrollY && window.scrollTo(0, 0));
     } else {
       $("demo").hidden = false;
     }
