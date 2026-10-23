@@ -33,6 +33,12 @@ function game({ member = false } = {}) {
 }
 
 const ANNA = { id: 501, first_name: "Анна" };
+// Друг справді пограв: 1000 тапів — лише тоді бонус тому, хто запросив.
+async function play1000(g, user) {
+  g.store.rows.get(user.id).total_taps = 999;
+  g.wait(1000);
+  return g.call("tap", user, { taps: 1 });
+}
 const BOHDAN = { id: 502, first_name: "Богдан", is_premium: true };
 
 describe("гра: вхід через Telegram", () => {
@@ -174,7 +180,7 @@ describe("гра: API", () => {
     assert.equal(bought.state.upgrades.tap.cost, 22_000, "наступний рівень дорожчий");
   });
 
-  it("запрошення: другу — вітальні 500, тому, хто запросив, — 1000 (за друга з Premium — 2500)", async () => {
+  it("запрошення: другу — вітальні 500 одразу, тому, хто запросив, — 1000 (Premium — 2500), коли друг натапав 1000", async () => {
     const g = game();
     await g.call("me", ANNA);
     const friend = await g.call("me", { id: 777, first_name: "Олег" }, {}, { startParam: "ref_501" });
@@ -183,6 +189,10 @@ describe("гра: API", () => {
     g.wait(1000);
     await g.call("me", BOHDAN, {}, { startParam: "ref_501" });
     await g.call("me", BOHDAN, {}, { startParam: "ref_501" }); // повторний вхід — бонус не вдруге
+    assert.equal((await g.call("me", ANNA)).state.refBonus, 0, "поки друзі не грали — бонусу немає");
+    await play1000(g, { id: 777, first_name: "Олег" });
+    await play1000(g, BOHDAN);
+    await play1000(g, BOHDAN); // уже оплачено — вдруге не платимо
     const anna = await g.call("me", ANNA);
     assert.equal(anna.state.invited, 2);
     assert.equal(anna.state.refBonus, 3500);
@@ -195,9 +205,11 @@ describe("гра: API", () => {
     await g.call("me", ANNA);
     await g.call("me", BOHDAN, {}, { startParam: "ref_501" });
     await g.call("me", { id: 777, first_name: "Олег" }, {}, { startParam: "ref_502" });
+    await play1000(g, BOHDAN);
+    await play1000(g, { id: 777, first_name: "Олег" });
     g.store.rows.get(777).earned = 9000;
     const { friends } = await g.call("friends", BOHDAN);
-    assert.deepEqual(friends.map((f) => [f.name, f.earned]), [["Олег", 9000], ["Анна", 2500], ["Богдан", 1500]]);
+    assert.deepEqual(friends.map((f) => [f.name, f.earned]), [["Олег", 9000], ["Анна", 2500], ["Богдан", 1501]]);
     assert.equal(friends.find((f) => f.name === "Олег").ref_reward, 1000, "Олега запросив Богдан");
   });
 
@@ -205,6 +217,7 @@ describe("гра: API", () => {
     const g = game();
     await g.call("me", ANNA);
     await g.call("me", BOHDAN, {}, { startParam: "ref_501" });
+    await play1000(g, BOHDAN);
     await g.call("delete", BOHDAN);
     const again = await g.call("me", BOHDAN, {}, { startParam: "ref_501" });
     assert.equal(again.welcome, 0);
@@ -399,5 +412,27 @@ describe("бот позначає функції для завдань гри", 
     const h = harness({ onFeature: async (id, feature) => marks.push([id, feature]) });
     await h.press("qr", h.newMessage({ text: "Привіт" }));
     assert.deepEqual(marks, [[111, "qr"]]);
+  });
+});
+
+describe("гра: захист від ферм ботів", () => {
+  it("за день — не більше 20 000 тапів; наступного дня — знову", () => {
+    const p = newPlayer(ANNA, T0);
+    p.energy = 1e9;
+    p.taps_day = "2026-10-23";
+    p.taps_today = 19_990;
+    assert.equal(applyTaps(p, 50, T0 + 5000), 10, "лише 10 до ліміту");
+    assert.equal(applyTaps(p, 50, T0 + 10_000), 0, "ліміт вичерпано");
+    assert.equal(applyTaps(p, 50, T0 + 24 * 3600_000), 50, "новий день");
+  });
+
+  it("один гаманець — один гравець", async () => {
+    const g = game();
+    await g.call("me", ANNA);
+    await g.call("me", BOHDAN);
+    const address = "EQDtFpEwcFAEcRe5mLVh2N6C0x-_hJEM7W61_JLnSF74p4q2";
+    assert.equal((await g.call("wallet", ANNA, { address })).status, 200);
+    assert.equal((await g.call("wallet", BOHDAN, { address })).error, "wallet_taken");
+    assert.equal((await g.call("wallet", ANNA, { address })).status, 200, "свій можна зберегти ще раз");
   });
 });

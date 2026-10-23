@@ -85,6 +85,10 @@
     .lvl-row { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--hint); margin: 1px 0 4px; }
     .balance { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 12px 16px; }
     .balance .coin-ic { width: 42px; height: 42px; }
+    .ton-row { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-weight: 700; font-size: 14px; color: #7cc8ff; }
+    .ton-row[hidden] { display: none; }
+    .ton-row .ton-ic { width: 18px; height: 18px; flex: none; }
+    .ton-go { padding: 2px 8px; border-radius: 8px; font-size: 12.5px; color: #fff; background: #0098ea; }
     .big { font-size: 34px; font-weight: 800; letter-spacing: -0.5px; line-height: 1.05; font-variant-numeric: tabular-nums; }
     .duo { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .stat { display: flex; align-items: center; gap: 10px; padding: 10px 12px; width: 100%; }
@@ -322,6 +326,7 @@
     <path d="M12.1 10.5c.2 1.6 2.4 2.5 2.4 4.9A2.5 2.5 0 0 1 12 18a2.5 2.5 0 0 1-2.5-2.5c0-1.3.7-2.2 1.3-2.7.1.8.5 1.3 1 1.4-.2-1.3.1-2.6.3-3.7z" fill="#fff3b0"/>
   </symbol>
   <symbol id="i-league" viewBox="0 0 24 24"><path d="M12 2.8l7.5 3v5.6c0 4.6-3.2 8-7.5 9.8-4.3-1.8-7.5-5.2-7.5-9.8V5.8z" fill="currentColor" fill-opacity=".22"/><path d="M12 7.5l1.4 2.9 3.1.4-2.3 2.2.6 3.1-2.8-1.5-2.8 1.5.6-3.1-2.3-2.2 3.1-.4z" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="ton" viewBox="0 0 24 24"><circle cx="12" cy="12" r="12" fill="#0098ea"/><path d="M7.6 7.3h8.8c.8 0 1.3.9.9 1.6l-4.6 7.9a.8.8 0 0 1-1.4 0L6.7 8.9c-.4-.7.1-1.6.9-1.6zM12 7.3v10.2" fill="none" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></symbol>
   <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 11l8-6.5 8 6.5"/><path d="M6 9.5V20h12V9.5"/><path d="M10 20v-5h4v5"/></symbol>
   <symbol id="i-rocket" viewBox="0 0 24 24"><path d="M14.2 4.6C16.8 3.4 20 3.5 20 3.5s.1 3.2-1.1 5.8l-6.2 6.2-4.4-4.4z"/><path d="M8.6 10.9l-3.3.4-2 2 4.3 1.3M13.1 15.4l-.4 3.3-2 2-1.3-4.3M15.6 8.4h.01M6.2 17.8c-1.2 1.2-1.7 2.9-1.7 2.9s1.7-.5 2.9-1.7"/></symbol>
   <symbol id="i-egg" viewBox="0 0 24 24"><path d="M12 3c3.6 0 6.5 5.6 6.5 10.3A6.4 6.4 0 0 1 12 20.5a6.4 6.4 0 0 1-6.5-7.2C5.5 8.6 8.4 3 12 3z"/></symbol>
@@ -378,7 +383,8 @@
     </div>
     <div class="card balance">
       <svg class="coin-ic"><use href="#coin"/></svg>
-      <div><div class="big" id="g-coins">0</div><div class="hint">Баланс монет</div></div>
+      <div><div class="big" id="g-coins">0</div><div class="hint">Баланс монет</div>
+        <button class="ton-row" id="g-ton" hidden><svg class="ton-ic"><use href="#ton"/></svg><span id="g-ton-sum">≈ 0 TON</span><span class="ton-go">Вивести</span></button></div>
     </div>
     <div class="duo">
       <button class="card stat" id="g-energy-card">
@@ -599,6 +605,7 @@
   let pending = 0; // тапи, ще не надіслані
   let passiveF = 0; // пасивний дохід, що набіг локально з останньої відповіді сервера
   let refLink = "";
+  let payoutCfg = { enabled: false }; // виплати TON: чи ввімкнені й курс — для рядка «≈ N TON» на балансі
   let queue = Promise.resolve(); // запити — по одному, щоб не заважали один одному
 
   function call(path, body = {}) {
@@ -633,6 +640,7 @@
     S.coins += extra;
     S.earned += extra;
     S.energy = Math.max(0, S.energy - pending);
+    S.tapsToday += pending + pendingTurbo;
     render();
   }
 
@@ -687,6 +695,11 @@
     lastDown = e.timeStamp;
     if (e.timeStamp - lastTap < MIN_TAP_MS) return;
     lastTap = e.timeStamp;
+    if (S.tapsToday >= S.tapsLimit) {
+      haptic("error");
+      toast(`На сьогодні досить: ${fmt(S.tapsLimit)} тапів. Ферма відпочиває до завтра`);
+      return;
+    }
     const turbo = turboOn();
     if (!turbo && S.energy < 1) {
       haptic("error");
@@ -699,6 +712,7 @@
     const gain = turbo ? turboGain() : S.perTap;
     if (turbo) pendingTurbo++;
     else (S.energy -= 1), pending++;
+    S.tapsToday++;
     S.coins += gain;
     S.earned += gain;
     const r = coinEl.getBoundingClientRect();
@@ -772,9 +786,13 @@
   }
 
   const coinsNow = () => S.coins + Math.floor(passiveF);
+  const tonText = (ton) => ton.toLocaleString("uk-UA", { maximumFractionDigits: ton < 1 ? 4 : 2 });
 
   function renderLive() {
     $("g-coins").textContent = fmt(coinsNow());
+    // Лише коли виплати справді ввімкнені: інакше «це гроші» було б неправдою.
+    $("g-ton").hidden = !payoutCfg.enabled;
+    if (payoutCfg.enabled) $("g-ton-sum").textContent = `≈ ${tonText(coinsNow() / payoutCfg.rate)} TON`;
     $("g-energy").textContent = `${fmt(S.energy)} / ${fmt(S.energyMax)}`;
     coinEl.classList.toggle("tired", S.energy < 1);
     levelBar("g");
@@ -993,7 +1011,7 @@
     $("f-bonus").textContent = fmt(S.refBonus);
     const r = S.rewards;
     $("how").innerHTML =
-      `<div>${icon("i-gift")}<span>Тобі — <b class="plus">+${fmt(r.friend)}</b> за кожного друга</span></div>` +
+      `<div>${icon("i-gift")}<span>Тобі — <b class="plus">+${fmt(r.friend)}</b> за кожного друга, коли він натапає ${fmt(r.activeTaps)} разів</span></div>` +
       `<div>${icon("i-bolt")}<span>Якщо в друга Telegram Premium — <b class="plus">+${fmt(r.friendPremium)}</b></span></div>` +
       `<div>${icon("i-users")}<span>Другу — <b class="plus">+${fmt(r.welcome)}</b> на старт</span></div>`;
   }
@@ -1019,7 +1037,9 @@
       row.querySelector("b").textContent = f.name;
       if (me) row.querySelector("b").insertAdjacentHTML("beforeend", `<span class="tag-me">Ти</span>`);
       const league = leagueOf(f.earned);
-      const who = me ? "" : f.referrer === S.id ? ` · приніс тобі +${fmt(f.ref_reward)}` : " · запросив тебе";
+      const who = me ? "" : f.referrer !== S.id ? " · запросив тебе"
+        : f.ref_paid ? ` · приніс тобі +${fmt(f.ref_reward)}`
+        : ` · +${fmt(f.ref_reward)} після ${fmt(S.rewards.activeTaps)} тапів (зараз ${fmt(Math.min(f.total_taps, S.rewards.activeTaps))})`;
       row.querySelector(".meta").innerHTML = `${leagueBadge(league)}${LEAGUES[league].name} ліга${who}`;
       list.append(row);
     });
@@ -1149,6 +1169,7 @@
       </div>`);
   }
   $("boosts").addEventListener("click", () => (haptic("select"), openBoosts()));
+  $("g-ton").addEventListener("click", () => (haptic("select"), showTab("profile"), openPage("payouts")));
   $("sheet-body").addEventListener("click", async (e) => {
     const kind = e.target.closest("[data-boost]")?.dataset.boost;
     if (!kind) return;
@@ -1256,6 +1277,7 @@
     tonUI.onStatusChange(async (w) => {
       if (!w || !payoutInfo) return;
       const res = await call("wallet", { address: w.account.address }).catch(() => null);
+      if (res?.error === "wallet_taken") return toast("Цей гаманець уже прив'язаний до іншого гравця");
       if (!res?.wallet) return toast("Цей гаманець не підходить — потрібна звичайна адреса TON");
       if (res.wallet !== payoutInfo.wallet) toast("Гаманець підключено");
       payoutInfo.wallet = res.wallet;
@@ -1272,6 +1294,7 @@
       return;
     }
     payoutInfo = res;
+    payoutCfg = { enabled: res.settings.enabled, rate: res.settings.rate };
     renderPayouts();
   }
 
@@ -1483,7 +1506,7 @@
         ["streak3", 3, 1500, 3], ["streak7", 7, 7500, 3], ["streak30", 30, 30000, 3], ["chicken1", 1, 500, 0], ["chicken25", 25, 5000, 0],
         ["cipher1", 1, 1000, 0], ["cipher10", 10, 10000, 0], ["upgrade5", 5, 10000, 1], ["allmax", 10, 100000, 1],
       ].map(([id, goal, reward, progress]) => ({ id, goal, reward, progress, done: id === "friend1" })),
-      rewards: { friend: 1000, friendPremium: 2500, welcome: 500 }, at: now,
+      rewards: { friend: 1000, friendPremium: 2500, welcome: 500, activeTaps: 1000 }, tapsToday: 1840, tapsLimit: 20000, at: now,
     };
     const d = demo;
     d.energy = Math.min(d.energyMax, d.energy + (d.regen * (now - d.at)) / 1000);
@@ -1504,7 +1527,7 @@
       d.earned += 3000;
       return out();
     }
-    if (path === "me") return out({ refLink: `${BOT_LINK}?startapp=ref_0` });
+    if (path === "me") return out({ refLink: `${BOT_LINK}?startapp=ref_0`, payout: { enabled: true, rate: 1_000_000 } });
     if (path === "tap") {
       const n = Math.min(body.taps, Math.floor(d.energy));
       const turbo = d.boosts.turbo.until > now - 2000 ? body.turboTaps || 0 : 0;
@@ -1567,7 +1590,8 @@
     }
     if (path === "friends") {
       return { status: 200, friends: [
-        { id: 7, name: "Олена", photo: null, earned: 26800, referrer: 0, ref_reward: 1000 },
+        { id: 7, name: "Олена", photo: null, earned: 26800, referrer: 0, ref_reward: 1000, ref_paid: 1, total_taps: 5200 },
+        { id: 8, name: "Максим", photo: null, earned: 900, referrer: 0, ref_reward: 1000, ref_paid: 0, total_taps: 340 },
         { id: 0, name: d.name, photo: null, earned: d.earned, referrer: 5 },
         { id: 5, name: "Тарас", photo: null, earned: 4100, referrer: null },
       ].sort((a, b) => b.earned - a.earned) };
@@ -1603,6 +1627,7 @@
       return;
     }
     refLink = res.refLink;
+    payoutCfg = res.payout ?? payoutCfg;
     adopt(res.state);
     avatar($("g-avatar"), S.name, S.photo);
     avatar($("p-avatar"), S.name, S.photo);

@@ -205,7 +205,8 @@ export const t = {
     `Сума: <b>${w.ton} TON</b> (${new Intl.NumberFormat("uk-UA").format(w.coins)} монет)\n` +
     `Гаманець: <code>${esc(w.address)}</code>\n` +
     `У грі з ${new Date(p.created_at).toLocaleDateString("uk-UA", { timeZone: "Europe/Kyiv" })} · ` +
-    `зароблено ${new Intl.NumberFormat("uk-UA").format(p.earned)} · тапів ${new Intl.NumberFormat("uk-UA").format(p.total_taps)} · друзів ${p.invited}\n\n` +
+    `зароблено ${new Intl.NumberFormat("uk-UA").format(p.earned)} · тапів ${new Intl.NumberFormat("uk-UA").format(p.total_taps)} · друзів ${p.invited}\n` +
+    `Telegram Premium: ${p.premium ? "так" : "ні — будь уважнішим, акаунти ферм майже завжди без Premium"}\n\n` +
     `Заплати зі свого гаманця й натисни «Виплачено». «Відхилити» поверне монети гравцю.`,
   payoutPayButton: "Оплатити в Tonkeeper",
   payoutPaidButton: "Виплачено",

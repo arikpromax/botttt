@@ -4,7 +4,7 @@ import { verifyInitData } from "./auth.js";
 import { isCipher } from "./cipher.js";
 import { PAYOUT_RULES, checkWithdrawal, formatTon, normalizeAddress } from "./payouts.js";
 import {
-  REWARDS, applyTaps, buyUpgrade, claimAchievement, claimChicken, claimCipher, claimTask, joinByInvite, kyivDay, newPlayer,
+  REWARDS, activateReferral, applyTaps, buyUpgrade, claimAchievement, claimChicken, claimCipher, claimTask, joinByInvite, kyivDay, newPlayer,
   publicState, settle, touchStreak, useBoost,
 } from "./rules.js";
 
@@ -17,17 +17,18 @@ const json = (data, status = 200) =>
 export function gameApi({
   store, token, checkMember, botUsername, secret, payouts = null, notifyOwner = async () => {}, clock = () => Date.now(),
 }) {
-  // Гравець за даними Telegram; новий — створюємо (і даємо бонус за запрошення, якщо прийшов за посиланням
-  // уперше в житті: хто видалив прогрес і зайшов знову, другому разу бонусу не приносить).
+  // Гравець за даними Telegram; новий — створюємо. Прийшов за посиланням уперше в житті — запам'ятовуємо,
+  // хто запросив (бонус тому нарахується, коли новачок пограє: activateReferral); хто видалив прогрес
+  // і зайшов знову, другому разу бонусу не приносить.
   async function load(auth, now) {
     const existing = await store.get(auth.user.id);
     if (existing) return { p: existing, created: false };
     const p = newPlayer(auth.user, now);
     const refId = Number(/^ref_(\d{1,15})$/.exec(auth.startParam ?? "")?.[1]);
     const invited = refId && refId !== p.id && (await store.get(refId)) && !(await store.wasInvited(p.id));
-    const reward = invited ? joinByInvite(p, refId) : 0;
+    if (invited) joinByInvite(p, refId);
     if (!(await store.insert(p))) return { p: await store.get(p.id), created: false };
-    if (reward) await Promise.all([store.reward(refId, reward), store.markInvited(p.id)]);
+    if (invited) await store.markInvited(p.id);
     return { p, created: true };
   }
 
@@ -63,15 +64,26 @@ export function gameApi({
         const { lost } = touchStreak(p, now);
         return { offline: settle(p, now), streakLost: lost >= 2 ? lost : 0 };
       });
+      // Виплати: щоб показати на балансі «≈ N TON» (лише коли виплати ввімкнено).
+      const s = payouts ? await payouts.settings().catch(() => null) : null;
       return reply(out, {
         isNew: out.created,
         welcome: out.created && out.p.referrer ? REWARDS.welcome : 0,
         refLink: `https://t.me/${botUsername}?startapp=ref_${out.p.id}`,
+        payout: s ? { enabled: s.enabled, rate: s.rate } : { enabled: false },
       });
     },
-    tap: (auth, body) => mutate(auth, (p, now) => ({
-      accepted: applyTaps(p, Number(body.taps) || 0, now, Number(body.turboTaps) || 0),
-    })).then((out) => reply(out)),
+    async tap(auth, body) {
+      let activation = null;
+      const out = await mutate(auth, (p, now) => {
+        const accepted = applyTaps(p, Number(body.taps) || 0, now, Number(body.turboTaps) || 0);
+        activation = activateReferral(p);
+        return { accepted };
+      });
+      // Друг натапав 1000 разів — той, хто запросив, отримує бонус (атомарно, після збереження друга).
+      if (activation) await store.reward(activation.referrer, activation.amount);
+      return reply(out);
+    },
     boost: (auth, body) => mutate(auth, (p, now) => refusal(useBoost(p, String(body.kind), now))).then((out) => reply(out)),
     achievement: (auth, body) => mutate(auth, (p, now) => refusal(claimAchievement(p, String(body.id), now))).then((out) => reply(out)),
     upgrade: (auth, body) => mutate(auth, (p, now) => refusal(buyUpgrade(p, String(body.kind), now))).then((out) => reply(out)),
@@ -102,6 +114,8 @@ export function gameApi({
     async wallet(auth, body) {
       const address = body.address == null ? null : normalizeAddress(body.address);
       if (body.address != null && !address) return json({ error: "wallet" }, 400);
+      // Один гаманець — один гравець: ферма не зведе сотні акаунтів на свій гаманець.
+      if (address && (await store.walletOwner(address, auth.user.id))) return json({ error: "wallet_taken" }, 409);
       return reply(await mutate(auth, (p) => ((p.wallet = address), {})), { wallet: address });
     },
     async withdraw(auth, body) {

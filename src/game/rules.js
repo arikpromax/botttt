@@ -75,6 +75,10 @@ export const ACHIEVEMENTS = [
 // «Відро» тапів: невикористаний час накопичується не більше ніж за 5 секунд — щоб не можна було
 // довго чекати, а потім надіслати тисячу тапів разом.
 export const TAPS_PER_SECOND = 12;
+// Проти ферм ботів: за день зараховується не більше 20 000 тапів (людина стільки рідко натапує),
+// а бонус за запрошення той, хто запросив, отримує лише коли друг сам натапав 1 000 разів.
+export const DAILY_TAP_LIMIT = 20_000;
+export const REF_ACTIVE_TAPS = 1000;
 const TAP_WINDOW_MS = 5000;
 const MAX_TAPS_PER_SYNC = 2000;
 
@@ -98,7 +102,7 @@ export function newPlayer(user, now) {
     coins: 0, earned: 0,
     tap_lvl: 1, energy_lvl: 1, regen_lvl: 1, passive_lvl: 1,
     energy: value("energy", 1), energy_at: now, passive_at: now, tap_at: now,
-    referrer: null, ref_reward: 0, invited: 0, ref_bonus: 0,
+    referrer: null, ref_reward: 0, ref_paid: 1, invited: 0, ref_bonus: 0,
     daily_day: null, channel_done: 0, friends3_done: 0,
     streak: 0, streak_day: null,
     chicken_at: now, chicken_day: null, chicken_count: 0,
@@ -159,8 +163,11 @@ export function settle(p, now) {
 // час турбо: енергії не витрачають і дають ×5, але лише в межах вікна турбо. → скільки зараховано (усього).
 export function applyTaps(p, taps, now, turboTaps = 0) {
   settle(p, now);
+  const today = kyivDay(now);
+  if (p.taps_day !== today) Object.assign(p, { taps_day: today, taps_today: 0 });
   const from = Math.max(p.tap_at, now - TAP_WINDOW_MS);
-  const byTime = Math.min(Math.floor(((now - from) / 1000) * TAPS_PER_SECOND), MAX_TAPS_PER_SYNC);
+  // Скільки тапів можна прийняти: за швидкістю пальця й за денним лімітом (проти ферм, що тапають цілодобово).
+  const byTime = Math.min(Math.floor(((now - from) / 1000) * TAPS_PER_SECOND), MAX_TAPS_PER_SYNC, DAILY_TAP_LIMIT - p.taps_today);
   const turboStart = p.turbo_until - BOOSTS.turbo.seconds * 1000;
   const turboMs = Math.max(0, Math.min(now, p.turbo_until + TURBO_GRACE_MS) - Math.max(from, turboStart));
   const turbo = Math.max(0, Math.min(Math.floor(turboTaps) || 0, Math.floor((turboMs / 1000) * TAPS_PER_SECOND), byTime));
@@ -168,8 +175,6 @@ export function applyTaps(p, taps, now, turboTaps = 0) {
   p.energy -= normal;
   p.tap_at = from + ((normal + turbo) / TAPS_PER_SECOND) * 1000; // використаний час «відра»
   p.total_taps += normal + turbo;
-  const today = kyivDay(now);
-  if (p.taps_day !== today) Object.assign(p, { taps_day: today, taps_today: 0 });
   p.taps_today += normal + turbo;
   give(p, (normal + turbo * BOOSTS.turbo.multiplier) * value("tap", p.tap_lvl));
   return normal + turbo;
@@ -348,12 +353,20 @@ export function claimCipher(p, now, correct) {
   return null;
 }
 
-// Новачок прийшов за запрошенням: йому — вітальні монети. → скільки отримає той, хто запросив.
+// Новачок прийшов за запрошенням: йому — вітальні монети одразу, а тому, хто запросив, бонус (ref_reward)
+// нарахується, коли новачок справді пограє (activateReferral) — так ферма «друзів»-ботів нічого не дає.
 export function joinByInvite(p, referrerId) {
   p.referrer = referrerId;
   p.ref_reward = p.premium ? REWARDS.friendPremium : REWARDS.friend;
+  p.ref_paid = 0;
   give(p, REWARDS.welcome);
-  return p.ref_reward;
+}
+
+// Друг натапав достатньо — час заплатити тому, хто запросив. → { referrer, amount } або null.
+export function activateReferral(p) {
+  if (!p.referrer || p.ref_paid || p.total_taps < REF_ACTIVE_TAPS) return null;
+  p.ref_paid = 1;
+  return { referrer: p.referrer, amount: p.ref_reward };
 }
 
 export function leagueOf(earned) {
@@ -401,7 +414,8 @@ export function publicState(p, now) {
       id: a.id, goal: a.goal, reward: a.reward, progress: Math.min(STATS[a.stat](p), a.goal), done: claimed(p).has(a.id),
     })),
     invited: p.invited, refBonus: p.ref_bonus,
-    rewards: { friend: REWARDS.friend, friendPremium: REWARDS.friendPremium, welcome: REWARDS.welcome },
+    rewards: { friend: REWARDS.friend, friendPremium: REWARDS.friendPremium, welcome: REWARDS.welcome, activeTaps: REF_ACTIVE_TAPS },
+    tapsToday: p.taps_day === today ? p.taps_today : 0, tapsLimit: DAILY_TAP_LIMIT,
     now,
   };
 }
