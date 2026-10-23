@@ -64,6 +64,27 @@ describe("TikTok", () => {
     assert.ok(calls.some((c) => c.method === "sendAudio"));
   });
 
+  it("бере відео прямо зі сторінки TikTok і передає його з куками сторінки", async () => {
+    const h = harness({ page: {
+      desc: "Котик", author: { uniqueId: "cat" },
+      video: { playAddr: "https://cdn.test/page.mp4", size: "9513819" },
+      music: { playUrl: "https://cdn.test/page.m4a", title: "Original sound", authorName: "Cat" },
+    } });
+    const calls = await h.text(LINK);
+    const video = calls.find((c) => c.method === "sendVideo");
+    assert.equal(typeof video.payload.video, "object"); // за посиланням Telegram не візьме — потрібні куки
+    const download = h.fetches.find((f) => f.url === "https://cdn.test/page.mp4");
+    assert.match(download.headers.cookie, /ttwid=a1; tt_chain_token=b2/);
+    assert.equal(calls.find((c) => c.method === "sendAudio").payload.audio, "https://cdn.test/page.m4a");
+    assert.ok(!h.fetches.some((f) => f.url.startsWith("https://www.tikwm.com")), "запасне джерело не потрібне");
+  });
+
+  it("якщо сторінка TikTok недоступна — бере з tikwm", async () => {
+    const h = harness({ tiktok: tiktokVideo(5 * MB) }); // сторінка відповідає 403
+    const calls = await h.text(LINK);
+    assert.equal(calls.find((c) => c.method === "sendVideo").payload.video, "https://cdn.test/hd.mp4");
+  });
+
   it("каже, що не вдалося, якщо сервіс не впізнав посилання", async () => {
     const h = harness({ tiktok: { code: -1, msg: "Url parsing is failed!" } });
     assert.match(h.texts(await h.text(LINK)), /Не вдалося завантажити/);

@@ -33,15 +33,27 @@ export function fakeImages({ width = 4000, height = 3000, base = 4 * MB, fail } 
   };
 }
 
-export function harness({ channel = "@chan", tiktok, images = fakeImages() } = {}) {
+// Сторінка TikTok так, як її віддає сайт: дані в <script id="__UNIVERSAL_DATA_FOR_REHYDRATION__"> і куки.
+export function tiktokPage(itemStruct) {
+  const data = { __DEFAULT_SCOPE__: { "webapp.video-detail": { itemInfo: { itemStruct }, statusCode: 0 } } };
+  const html = `<html><script id="__UNIVERSAL_DATA_FOR_REHYDRATION__" type="application/json">${JSON.stringify(data)}</script></html>`;
+  const headers = new Headers({ "content-type": "text/html" });
+  headers.append("set-cookie", "ttwid=a1; Path=/");
+  headers.append("set-cookie", "tt_chain_token=b2; Path=/");
+  return new Response(html, { headers });
+}
+
+export function harness({ channel = "@chan", tiktok, page, images = fakeImages() } = {}) {
   const tg = { member: "member", calls: [], rejectUrl: false, nextId: 100 };
   const fetches = [];
-  const fakeFetch = async (url) => {
-    fetches.push(String(url));
+  const fakeFetch = async (url, init = {}) => {
+    fetches.push({ url: String(url), headers: init.headers ?? {} });
     if (String(url).startsWith("https://www.tikwm.com/api/")) {
       return new Response(JSON.stringify(tiktok ?? { code: -1, msg: "no tiktok" }), { headers: { "content-type": "application/json" } });
     }
+    if (/tiktok\.com\//.test(String(url))) return page ? tiktokPage(page) : new Response("blocked", { status: 403 });
     if (String(url).startsWith("https://api.telegram.org/file/")) return new Response(new Uint8Array(4 * MB));
+    if (String(url).startsWith("https://cdn.test/")) return new Response(new Uint8Array(1024));
     return new Response("not found", { status: 404 });
   };
 
