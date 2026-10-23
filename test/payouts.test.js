@@ -127,3 +127,48 @@ describe("виплати: власник у боті", () => {
     assert.equal((await payouts.settings()).enabled, true, "чужий не вимкне");
   });
 });
+
+describe("виплати: фонд для власника", () => {
+  it("рахує, скільки Stars можна вивести, у TON і скільки треба на монети гравців", async () => {
+    const { fundReport } = await import("../src/game/fund.js");
+    const f = fundReport({ balance: 1000, recentStars: 300, earnedStars: 1200, playerCoins: 5_000_000, rate: 1_000_000, tonUsd: 5 });
+    assert.equal(f.withdrawable, 700, "останні 21 день ще не виводяться");
+    assert.equal(f.fromTelegram, true);
+    assert.ok(Math.abs(f.fundTon - (700 * 0.013) / 5) < 1e-9);
+    assert.equal(f.coinsTon, 5);
+    assert.ok(Math.abs(f.suggestedBudget - f.fundTon / 30) < 1e-9);
+    const noPrice = fundReport({ balance: null, recentStars: 0, earnedStars: 200, playerCoins: 0, rate: 1_000_000, tonUsd: null });
+    assert.equal(noPrice.stars, 200, "без даних Telegram — за нашим обліком");
+    assert.equal(noPrice.fundTon, null);
+  });
+
+  it("курс TON: якщо CoinGecko не відповів — бере з Binance, і кешує", async () => {
+    const { resetPriceCache, tonUsd } = await import("../src/game/fund.js");
+    resetPriceCache();
+    const asked = [];
+    const fakeFetch = async (url) => {
+      asked.push(url);
+      return url.includes("coingecko") ? new Response("blocked", { status: 403 }) : Response.json({ symbol: "TONUSDT", price: "5.20" });
+    };
+    assert.equal(await tonUsd(fakeFetch, T0), 5.2);
+    assert.equal(await tonUsd(fakeFetch, T0 + 60_000), 5.2);
+    assert.equal(asked.length, 2, "вдруге — з кешу");
+    resetPriceCache();
+  });
+
+  it("/payouts власнику показує фонд", async () => {
+    const { memoryPurchases } = await import("../src/game/shop.js");
+    const purchases = memoryPurchases();
+    await purchases.add({ charge_id: "a", user_id: 1, product: "turbo10", stars: 25, created_at: Date.now() - 30 * DAY });
+    await purchases.add({ charge_id: "b", user_id: 1, product: "freeze", stars: 20, created_at: Date.now() });
+    const players = memoryPlayers();
+    await players.insert({ ...newPlayer({ id: 5, first_name: "Г" }, T0), coins: 2_000_000 });
+    const h = harness({ ownerId: USER.id, payouts: memoryPayouts(), players, shop: { store: players, purchases } });
+    const calls = await h.post({ text: "/payouts", entities: [{ type: "bot_command", offset: 0, length: 8 }] });
+    assert.ok(calls.some((c) => c.method === "getMyStarBalance"), "баланс питаємо в Telegram");
+    const msg = calls.find((c) => c.method === "sendMessage");
+    assert.match(msg.payload.text, /<b>Фонд<\/b>/);
+    assert.match(msg.payload.text, /Можна вивести вже зараз: ~25 Stars/);
+    assert.match(msg.payload.text, /Монети гравців: 2\s000\s000 ≈ <b>2 TON<\/b>/);
+  });
+});

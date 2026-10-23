@@ -47,6 +47,8 @@ export function d1Players(DB) {
     // Чий це гаманець (крім гравця exceptId): один гаманець — один гравець.
     walletOwner: async (address, exceptId) =>
       (await DB.prepare(`SELECT id FROM players WHERE wallet = ?1 AND id != ?2 LIMIT 1`).bind(address, exceptId).first())?.id ?? null,
+    // Монети всіх гравців разом — скільки TON знадобилося б, якби всі вивели все.
+    totalCoins: async () => (await DB.prepare(`SELECT COALESCE(SUM(coins), 0) AS n FROM players`).first()).n,
     // Повернути монети (відхилена заявка на виплату) — атомарно, без читання.
     refund: (id, coins) => DB.prepare(`UPDATE players SET coins = coins + ?2, version = version + 1 WHERE id = ?1`).bind(id, coins).run(),
     wasInvited: async (id) => Boolean(await DB.prepare(`SELECT 1 FROM invite_used WHERE id = ?1`).bind(id).first()),
@@ -89,6 +91,7 @@ export function memoryPlayers() {
         Object.assign(row, { bot_used: row.bot_used ? `${row.bot_used},${feature}` : feature, version: row.version + 1 });
       }
     },
+    totalCoins: async () => [...rows.values()].reduce((n, r) => n + r.coins, 0),
     walletOwner: async (address, exceptId) => [...rows.values()].find((r) => r.wallet === address && r.id !== exceptId)?.id ?? null,
     async refund(id, coins) {
       const row = rows.get(id);

@@ -19,6 +19,7 @@ import { kyivDay } from "./game/rules.js";
 import { formatTon } from "./game/payouts.js";
 import { SHOP, cantBuy } from "./game/rules.js";
 import { grantPurchase, parsePayload } from "./game/shop.js";
+import { HOLD_DAYS, fundReport, tonUsd } from "./game/fund.js";
 
 const HTML = { parse_mode: "HTML", link_preview_options: { is_disabled: true } };
 const MEMBER = new Set(["creator", "administrator", "member"]);
@@ -608,9 +609,24 @@ export function createBot(token, {
   const isOwner = (ctx) => Boolean(payouts && ownerId && ctx.from?.id === ownerId);
 
   async function payoutStatus(chatId) {
-    const [settings, pending, today] = await Promise.all([payouts.settings(), payouts.pending(), payouts.dayTotal(kyivDay(Date.now()))]);
+    const now = Date.now();
+    const [settings, pending, today, fund] = await Promise.all([
+      payouts.settings(), payouts.pending(), payouts.dayTotal(kyivDay(now)), fundNow(now),
+    ]);
     const pendingNano = pending.reduce((n, w) => n + BigInt(w.nano), 0n);
-    await send(chatId, t.payoutStatus(settings, pending.length, formatTon(pendingNano), formatTon(today)));
+    await send(chatId, t.payoutStatus(settings, pending.length, formatTon(pendingNano), formatTon(today)) +
+      (fund ? `\n\n${t.payoutFund(fundReport({ ...fund, rate: settings.rate }))}` : ""));
+  }
+
+  // Дані для «Фонду»: баланс Stars бота з Telegram, Stars за останні 21 день, монети гравців, курс TON.
+  async function fundNow(now) {
+    if (!shop || !players) return null;
+    const [balance, recentStars, report, playerCoins, price] = await Promise.all([
+      bot.api.raw.getMyStarBalance().then((b) => b.amount).catch(() => null),
+      shop.purchases.starsSince(now - HOLD_DAYS * 86_400_000),
+      shop.purchases.report(now), players.totalCoins(), tonUsd(fetch),
+    ]);
+    return { balance, recentStars, earnedStars: report.total, playerCoins, tonUsd: price };
   }
 
   // /payouts — стан; /payouts on|off — увімкнути чи вимкнути виплати.

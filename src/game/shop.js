@@ -62,6 +62,10 @@ export function d1Purchases(DB) {
     },
     get: (chargeId) => DB.prepare(`SELECT * FROM purchases WHERE charge_id = ?1`).bind(chargeId).first(),
     markRefunded: (chargeId) => DB.prepare(`UPDATE purchases SET refunded = 1 WHERE charge_id = ?1`).bind(chargeId).run(),
+    // Stars, отримані після моменту since (без повернених) — для «Фонду».
+    starsSince: async (since) => (await DB.prepare(
+      `SELECT COALESCE(SUM(stars), 0) AS n FROM purchases WHERE refunded = 0 AND created_at >= ?1`,
+    ).bind(since).first()).n,
     async report(now) {
       return report((await DB.prepare(`SELECT charge_id, user_id, product, stars, created_at, refunded FROM purchases`).all()).results, now);
     },
@@ -79,6 +83,7 @@ export function memoryPurchases() {
     },
     get: async (chargeId) => rows.get(chargeId) ?? null,
     markRefunded: async (chargeId) => rows.has(chargeId) && (rows.get(chargeId).refunded = 1),
+    starsSince: async (since) => [...rows.values()].filter((r) => !r.refunded && r.created_at >= since).reduce((n, r) => n + r.stars, 0),
     report: async (now) => report([...rows.values()], now),
   };
 }

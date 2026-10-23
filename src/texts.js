@@ -1,5 +1,8 @@
 // Тексти бота й допоміжне форматування.
 import { FEATURES } from "./stats.js";
+import { STAR_USD } from "./game/fund.js";
+
+const STAR_USD_TEXT = String(STAR_USD).replace(".", ",");
 
 export const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
@@ -226,6 +229,26 @@ export const t = {
     `<b>Команди</b>\n/payouts on — увімкнути, /payouts off — вимкнути\n/rate 1000000 — монет за 1 TON\n` +
     `/minton 0.5 — мінімальна виплата\n/budget 5 — скільки TON на день можна виплатити всім разом\n\n` +
     `<i>Гроші бот не надсилає сам: заявки приходять тобі, ти платиш зі свого гаманця й натискаєш «Виплачено».</i>`,
+  // Фонд виплат: звідки гроші на виплати (Stars від покупок у грі → TON через Fragment).
+  payoutFund: (f) => {
+    const n = (x) => new Intl.NumberFormat("uk-UA").format(Math.round(x));
+    const ton = (x) => (x == null ? "?" : x.toLocaleString("uk-UA", { maximumFractionDigits: x < 10 ? 2 : 1 }));
+    const tonLine = f.fundTon != null ? ` ≈ <b>${ton(f.fundTon)} TON</b>` : ` ≈ $${n(f.usd)}`;
+    const enough = f.fundTon != null && f.fundTon >= f.coinsTon;
+    return `<b>Фонд</b>\n` +
+      `Stars на балансі бота: ${n(f.stars)}${f.fromTelegram ? "" : " (за нашим обліком)"} · зароблено всього: ${n(f.earnedStars)}\n` +
+      `Можна вивести вже зараз: ~${n(f.withdrawable)} Stars${tonLine}\n` +
+      `<i>(решта — з покупок за останні 21 день: Telegram тримає їх до виводу)</i>\n` +
+      `Монети гравців: ${n(f.playerCoins)} ≈ <b>${ton(f.coinsTon)} TON</b> за курсом /rate — стільки треба, якби всі вивели все\n` +
+      (f.suggestedBudget != null && f.suggestedBudget > 0
+        ? `Порада: /budget не більше ${ton(f.suggestedBudget)} TON на день — тоді фонду вистачить щонайменше на місяць\n`
+        : `Фонду поки немає — виплати краще не вмикати, поки не з'являться покупки за Stars\n`) +
+      (f.fundTon != null && f.coinsTon > 0
+        ? (enough ? `Фонд покриває всі монети гравців — курс можна лишити.\n` : `Фонд менший за монети гравців — тримай денний бюджет і за потреби підніми /rate.\n`)
+        : "") +
+      `<i>Оцінка: 1 Star ≈ $${STAR_USD_TEXT}${f.price ? `, TON ≈ $${f.price.toLocaleString("uk-UA", { maximumFractionDigits: 2 })}` : ""}. ` +
+      `Точну суму побачиш при виводі: @BotFather → бот → Balance → Fragment.</i>`;
+  },
   payoutBadValue: (command) =>
     ({ rate: "Напиши ціле число не менше 1000, наприклад: /rate 1000000", minton: "Напиши суму в TON, наприклад: /minton 0.5",
       budget: "Напиши суму в TON на день, наприклад: /budget 5" })[command],
