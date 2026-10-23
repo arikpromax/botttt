@@ -26,14 +26,32 @@ describe("TikTok", () => {
     await assert.rejects(one({ code: -1, msg: "Url parsing is failed" }), /Url parsing/);
   });
 
-  it("надсилає відео без водяного знака й окремо звук", async () => {
+  it("надсилає відео з обкладинкою й окремо звук треком, без зайвих повідомлень", async () => {
     const h = harness({ tiktok: tiktokVideo(5 * MB) });
+    const from = h.tg.calls.length;
     const calls = await h.text(`ось ${LINK}`);
-    assert.deepEqual(h.methods(calls), ["sendMessage", "sendVideo", "sendAudio", "deleteMessage"]);
-    const video = calls.find((c) => c.method === "sendVideo");
-    assert.equal(video.payload.video, "https://cdn.test/hd.mp4"); // до 20 МБ — Telegram бере сам за посиланням
-    assert.match(video.payload.caption, /Без водяного знака · @test_bot/);
-    assert.equal(calls.find((c) => c.method === "sendAudio").payload.title, "Original sound");
+    assert.deepEqual(h.methods(calls), ["sendVideo", "sendAudio"]);
+    assert.ok(h.tg.calls.slice(from).some((c) => c.method === "sendChatAction" && c.payload.action === "upload_video"));
+
+    const video = calls.find((c) => c.method === "sendVideo").payload;
+    assert.equal(video.video, "https://cdn.test/hd.mp4"); // до 20 МБ — Telegram бере сам за посиланням
+    assert.equal(video.cover, "https://cdn.test/cover.jpg");
+    assert.equal(video.duration, 15);
+    assert.match(video.caption, /Без водяного знака · @test_bot/);
+
+    const audio = calls.find((c) => c.method === "sendAudio").payload;
+    assert.equal(typeof audio.audio, "object"); // файлом, щоб Telegram показав трек, а не документ
+    assert.equal(audio.audio.filename, "Original sound.m4a");
+    assert.equal(audio.title, "Original sound");
+    assert.equal(audio.performer, "Cat");
+  });
+
+  it("якщо Telegram не прийняв обкладинку — надсилає відео без неї", async () => {
+    const h = harness({ tiktok: tiktokVideo(5 * MB) });
+    h.tg.rejectCover = true;
+    const videos = (await h.text(LINK)).filter((c) => c.method === "sendVideo");
+    assert.equal(videos.at(-1).payload.cover, undefined);
+    assert.equal(h.tg.calls.filter((c) => c.method === "sendVideo" && c.payload.cover).length >= 1, true);
   });
 
   it("великі відео (20–50 МБ) надсилає сам, а понад 50 МБ дає посилання", async () => {
@@ -67,15 +85,16 @@ describe("TikTok", () => {
   it("бере відео прямо зі сторінки TikTok і передає його з куками сторінки", async () => {
     const h = harness({ page: {
       desc: "Котик", author: { uniqueId: "cat" },
-      video: { playAddr: "https://cdn.test/page.mp4", size: "9513819" },
+      video: { playAddr: "https://cdn.test/page.mp4", size: "9513819", width: 576, height: 1024, duration: 58, originCover: "https://cdn.test/c.jpg" },
       music: { playUrl: "https://cdn.test/page.m4a", title: "Original sound", authorName: "Cat" },
     } });
     const calls = await h.text(LINK);
-    const video = calls.find((c) => c.method === "sendVideo");
-    assert.equal(typeof video.payload.video, "object"); // за посиланням Telegram не візьме — потрібні куки
+    const video = calls.find((c) => c.method === "sendVideo").payload;
+    assert.equal(typeof video.video, "object"); // за посиланням Telegram не візьме — потрібні куки
+    assert.deepEqual([video.width, video.height, video.duration, video.cover], [576, 1024, 58, "https://cdn.test/c.jpg"]);
     const download = h.fetches.find((f) => f.url === "https://cdn.test/page.mp4");
     assert.match(download.headers.cookie, /ttwid=a1; tt_chain_token=b2/);
-    assert.equal(calls.find((c) => c.method === "sendAudio").payload.audio, "https://cdn.test/page.m4a");
+    assert.ok(h.fetches.some((f) => f.url === "https://cdn.test/page.m4a"));
     assert.ok(!h.fetches.some((f) => f.url.startsWith("https://www.tikwm.com")), "запасне джерело не потрібне");
   });
 

@@ -54,6 +54,16 @@ export function createBot(token, { channel, images, fetch = globalThis.fetch, ..
 
   // ---- TikTok ----
 
+  const clean = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v != null));
+
+  // Поки бот працює, вгорі чату видно «надсилає відео…». Telegram тримає статус ~5 с, тож оновлюємо його.
+  function keepStatus(chatId, action) {
+    const tick = () => bot.api.sendChatAction(chatId, action).catch(() => {});
+    tick();
+    const timer = setInterval(tick, 4500);
+    return { set: (next) => (action = next), stop: () => clearInterval(timer) };
+  }
+
   // Telegram завантажує файл за посиланням сам (до 20 МБ). Більші — або ті, що віддаються лише з куками
   // (file.headers), — бот завантажує й передає потоком сам (до 50 МБ).
   async function sendMedia(chatId, method, file, filename, extra) {
@@ -71,37 +81,60 @@ export function createBot(token, { channel, images, fetch = globalThis.fetch, ..
     return bot.api[method](chatId, new InputFile(res.body, filename), extra);
   }
 
+  // Відео з обкладинкою, розмірами й тривалістю — тоді в Telegram одразу чітке прев'ю.
+  // Якщо обкладинку Telegram не прийняв — надсилаємо без неї.
+  async function sendVideo(chatId, video, caption) {
+    const extra = clean({ caption, supports_streaming: true, width: video.width, height: video.height, duration: video.duration });
+    if (video.cover) {
+      try {
+        return await sendMedia(chatId, "sendVideo", video, "tiktok.mp4", { ...extra, cover: video.cover });
+      } catch (err) {
+        if (!(err instanceof GrammyError) || err.error_code !== 400) throw err;
+        console.warn("Обкладинку не прийнято:", err.description);
+      }
+    }
+    return sendMedia(chatId, "sendVideo", video, "tiktok.mp4", extra);
+  }
+
+  // Звук — завжди файлом із назвою й автором: за посиланням Telegram показує m4a як документ, а не як трек.
+  async function sendSound(chatId, music) {
+    const res = await fetch(music.url);
+    if (!res.ok) throw new Error(`звук не віддається: ${res.status}`);
+    const ext = /mpeg|mp3/.test(res.headers.get("content-type") ?? "") ? "mp3" : "m4a";
+    const name = (music.title || "TikTok").replace(/[\\/:*?"<>|]+/g, " ").slice(0, 60).trim() || "TikTok";
+    return bot.api.sendAudio(chatId, new InputFile(res.body, `${name}.${ext}`), clean({ title: music.title, performer: music.author }));
+  }
+
   async function handleTikTok(msg, url) {
-    const status = await send(msg.chat.id, t.ttLoading, reply(msg));
+    const status = keepStatus(msg.chat.id, "upload_video");
     let post;
     try {
       post = await resolveTikTok(url, fetch);
-    } catch (err) {
-      console.error("TikTok:", err.message);
-      return edit(status, t.ttFailed);
-    }
-    const caption = t.ttCaption(bot.botInfo.username);
-    try {
+      const caption = t.ttCaption(bot.botInfo.username);
       if (post.images.length) {
+        status.set("upload_photo");
         for (let i = 0; i < post.images.length; i += 10) {
           const group = post.images.slice(i, i + 10).map((media) => ({ type: "photo", media }));
           if (i === 0) group[0].caption = caption;
           await bot.api.sendMediaGroup(msg.chat.id, group);
         }
       } else if (post.video) {
-        if (post.video.size > UPLOAD_LIMIT) return edit(status, t.ttTooBig(post.video.headers ? null : post.video.url));
-        await sendMedia(msg.chat.id, "sendVideo", post.video, "tiktok.mp4", { caption, supports_streaming: true });
+        if (post.video.size > UPLOAD_LIMIT) {
+          return await send(msg.chat.id, t.ttTooBig(post.video.headers ? null : post.video.url), reply(msg));
+        }
+        await sendVideo(msg.chat.id, post.video, caption);
       }
       if (post.music) {
-        await sendMedia(msg.chat.id, "sendAudio", post.music, "tiktok.mp3", {
-          title: post.music.title, performer: post.music.author,
-        });
+        status.set("upload_document");
+        await sendSound(msg.chat.id, post.music);
       }
-      await bot.api.deleteMessage(msg.chat.id, status.message_id).catch(() => {});
       console.log(`TikTok (${post.source}): ${post.images.length ? `${post.images.length} фото` : "відео"}${post.music ? " + звук" : ""}`);
     } catch (err) {
-      console.error(`TikTok (${post.source}), надсилання:`, err.description ?? err.message);
-      await edit(status, post.video && !post.video.headers ? t.ttTooBig(post.video.url) : t.ttFailed);
+      console.error(`TikTok${post ? ` (${post.source})` : ""}:`, err.description ?? err.message);
+      const tooBig = post?.video && !post.video.headers && post.video.size > URL_LIMIT;
+      await send(msg.chat.id, tooBig ? t.ttTooBig(post.video.url) : t.ttFailed, reply(msg));
+    } finally {
+      status.stop();
     }
   }
 

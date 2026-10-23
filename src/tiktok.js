@@ -38,6 +38,11 @@ export async function fromTikTokPage(url, fetch = globalThis.fetch) {
       url: item.video.playAddr,
       size: Number(item.video.size) || 0,
       headers: { "user-agent": UA, referer: "https://www.tiktok.com/", cookie },
+      // Для чіткого прев'ю в Telegram: обкладинка, розміри й тривалість.
+      cover: item.video.originCover || item.video.cover || null,
+      width: Number(item.video.width) || undefined,
+      height: Number(item.video.height) || undefined,
+      duration: Number(item.video.duration) || undefined,
     },
     images,
     music: item.music?.playUrl
@@ -57,13 +62,14 @@ export async function fromTikwm(url, fetch = globalThis.fetch) {
   const images = Array.isArray(d.images) ? d.images.map(absolute).filter(Boolean) : [];
   // HD, якщо воно є й бот зможе його надіслати (до 50 МБ); інакше звичайне. Обидва без водяного знака.
   const hd = d.hdplay && d.hd_size > 0 && d.hd_size <= 50 * 1024 * 1024;
+  const look = { cover: absolute(d.origin_cover || d.cover), duration: Number(d.duration) || undefined };
   return {
     source: "tikwm",
     title: d.title ?? "",
     author: d.author?.unique_id ?? "",
     video: images.length ? null
-      : hd ? { url: absolute(d.hdplay), size: d.hd_size }
-      : d.play ? { url: absolute(d.play), size: d.size || 0 } : null,
+      : hd ? { url: absolute(d.hdplay), size: d.hd_size, ...look }
+      : d.play ? { url: absolute(d.play), size: d.size || 0, ...look } : null,
     images,
     music: d.music ? {
       url: absolute(d.music),

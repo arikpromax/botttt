@@ -67,6 +67,9 @@ export function harness({ channel = "@chan", tiktok, page, images = fakeImages()
     if (tg.rejectUrl && typeof media === "string") {
       return { ok: false, error_code: 400, description: "Bad Request: failed to get HTTP URL content" };
     }
+    if (tg.rejectCover && payload.cover) {
+      return { ok: false, error_code: 400, description: "Bad Request: wrong cover" };
+    }
     if (method.startsWith("answer") || method.startsWith("delete") || method === "editMessageText") return ok(true);
     if (method === "sendMediaGroup") return ok(payload.media.map(() => ({ message_id: tg.nextId++, date: 0, chat: { id: payload.chat_id, type: "private" } })));
     return ok({ message_id: tg.nextId++, date: 0, chat: { id: payload.chat_id, type: "private" } });
@@ -78,7 +81,7 @@ export function harness({ channel = "@chan", tiktok, page, images = fakeImages()
   const send = async (update) => {
     const from = tg.calls.length;
     await bot.handleUpdate({ update_id: updateId++, ...update });
-    return tg.calls.slice(from).filter((c) => c.method !== "getChatMember" && c.method !== "getFile");
+    return tg.calls.slice(from).filter((c) => !["getChatMember", "getFile", "sendChatAction"].includes(c.method));
   };
   const message = (extra) => ({ message_id: messageId++, date: 0, chat, from: USER, ...extra });
 
@@ -102,6 +105,7 @@ export const tiktokVideo = (size, extra = {}) => ({
   data: {
     title: "Котик", author: { unique_id: "cat", nickname: "Cat" },
     play: "https://cdn.test/play.mp4", size, hdplay: "https://cdn.test/hd.mp4", hd_size: size,
+    origin_cover: "https://cdn.test/cover.jpg", duration: 15,
     music: "https://cdn.test/sound.mp3", music_info: { title: "Original sound", author: "Cat" },
     ...extra,
   },
