@@ -33,4 +33,6 @@ npx wrangler secret put BOT_TOKEN
 npx wrangler secret put WEBHOOK_SECRET   # той самий, що в .env
 npm run webhook                          # вебхук, команди (власнику ще /stats) й опис бота
 ```
-Журнал наживо: `npx wrangler tail araconverter`. Сторінка застосунку («Open») і політика конфіденційності лежать у проєкті msgsaver (`placeholder/`).
+Воркер msgsaver (адреса Mini App у BotFather) лише пересилає запити сюди: `proxy/`, розміщення — `npx wrangler deploy --config proxy/wrangler.toml`.
+
+Журнал наживо: `npx wrangler tail araconverter`. Застосунок (гра й «Що вміє бот») і політика конфіденційності — у `app/`.

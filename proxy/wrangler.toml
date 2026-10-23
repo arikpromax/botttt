@@ -1,0 +1,15 @@
+# Воркер msgsaver: його адреса msgsaver.msgsaver.workers.dev прописана в BotFather як Main App,
+# тож він лишається, але лише пересилає кожен запит у воркер araconverter (застосунок і API гри).
+# Розміщення: npx wrangler deploy --config proxy/wrangler.toml
+name = "msgsaver"
+main = "proxy.js"
+compatibility_date = "2026-10-01"
+send_metrics = false
+
+[[services]]
+binding = "APP"
+service = "araconverter"
+
+# Колишній розклад чистки бази старого бота — вимкнено.
+[triggers]
+crons = []
