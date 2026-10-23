@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { fakeImages, fakeJpeg, fakeMp4, harness, tiktokVideo } from "./harness.js";
-import { sampleVideo } from "./fixtures.js";
+import { decodeQrPng, readInputFile, sampleVideo } from "./fixtures.js";
 import { audioKbps } from "../src/mp4.js";
 import { findTikTokUrl, resolveTikTok } from "../src/tiktok.js";
 import { compressToSize, parseSize, sizeChoices, MonthLimitError } from "../src/compress.js";
@@ -288,6 +288,31 @@ describe("звук із відео", () => {
     assert.match(mute.texts(await mute.press("sound", videoMsg(mute, 1000))), /немає звуку/);
     const big = harness();
     assert.match(big.texts(await big.post({ video: { file_id: "v", file_unique_id: "v", width: 1, height: 1, duration: 1, file_size: 30 * MB } })), /до 20 МБ/);
+  });
+});
+
+describe("QR-код", () => {
+  it("текст → кнопка → картинка, яку сканер читає назад у той самий текст", async () => {
+    const h = harness();
+    const [menu] = await h.text("Привіт, Ара! https://t.me/arawebsite_bot");
+    assert.deepEqual(menu.payload.reply_markup.inline_keyboard.flat().map((b) => b.callback_data), ["qr"]);
+    const photo = (await h.press("qr", h.newMessage({ text: "Привіт, Ара! https://t.me/arawebsite_bot" })))
+      .find((c) => c.method === "sendPhoto").payload;
+    const png = await readInputFile(photo.photo);
+    assert.equal(await decodeQrPng(png), "Привіт, Ара! https://t.me/arawebsite_bot");
+  });
+
+  it("задовгий текст — пояснює, без кнопки", async () => {
+    const h = harness();
+    const [reply] = await h.text("я".repeat(200));
+    assert.match(reply.payload.text, /Задовгий текст/);
+    assert.equal(reply.payload.reply_markup, undefined);
+  });
+
+  it("команди й тікток не плутає з текстом для QR", async () => {
+    const h = harness({ tiktok: tiktokVideo(MB) });
+    assert.ok(!(await h.text("/help")).some((c) => c.payload.reply_markup?.inline_keyboard?.flat().some((b) => b.callback_data === "qr")));
+    assert.ok((await h.text(LINK)).some((c) => c.method === "sendVideo"));
   });
 });
 

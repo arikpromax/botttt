@@ -1,4 +1,36 @@
-// Штучні медіафайли для тестів: MP4 з відео- і звуковою доріжкою зі справжніми таблицями семплів.
+// Штучні медіафайли для тестів: MP4 з відео- і звуковою доріжкою зі справжніми таблицями семплів;
+// читання QR-коду з PNG (1 біт) через jsQR.
+import jsQR from "jsqr";
+
+// Байти з InputFile grammY (у тестах файл не відправляється в Telegram).
+export async function readInputFile(file) {
+  const raw = await file.toRaw();
+  if (raw instanceof Uint8Array) return raw;
+  const chunks = [];
+  for await (const chunk of raw) chunks.push(chunk);
+  return concat(chunks);
+}
+
+export async function decodeQrPng(png) {
+  const view = new DataView(png.buffer, png.byteOffset, png.byteLength);
+  const size = view.getUint32(16);
+  const idat = [];
+  for (let p = 8; p < png.length;) {
+    const len = view.getUint32(p);
+    if (String.fromCharCode(...png.subarray(p + 4, p + 8)) === "IDAT") idat.push(png.subarray(p + 8, p + 8 + len));
+    p += 12 + len;
+  }
+  const raw = new Uint8Array(await new Response(new Blob(idat).stream().pipeThrough(new DecompressionStream("deflate"))).arrayBuffer());
+  const rowBytes = Math.ceil(size / 8);
+  const rgba = new Uint8ClampedArray(size * size * 4);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const c = ((raw[y * (rowBytes + 1) + 1 + (x >> 3)] >> (7 - (x & 7))) & 1) * 255;
+      rgba.set([c, c, c, 255], (y * size + x) * 4);
+    }
+  }
+  return jsQR(rgba, size, size)?.data ?? null;
+}
 
 const ascii = (s) => Uint8Array.from(s, (c) => c.charCodeAt(0));
 const u32 = (n) => { const b = new Uint8Array(4); new DataView(b.buffer).setUint32(0, n); return b; };

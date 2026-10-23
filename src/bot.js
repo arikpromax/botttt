@@ -7,6 +7,7 @@ import { RestrictedError, findTikTokUrl, resolveTikTok } from "./tiktok.js";
 import { MonthLimitError, UnsupportedImageError, compressToSize, parseSize, sizeChoices, toJpeg } from "./compress.js";
 import { imagesToPdf, jpegInfo, pdfReady } from "./pdf.js";
 import { NoAudioError, UnsupportedVideoError, extractAudio } from "./audio.js";
+import { QR_MAX_BYTES, makeQr } from "./qr.js";
 import { formatSize, t } from "./texts.js";
 
 const HTML = { parse_mode: "HTML", link_preview_options: { is_disabled: true } };
@@ -327,6 +328,29 @@ export function createBot(token, { channel, images, albums = null, albumWait = 2
     }
   }
 
+  // ---- Текст → QR-код ----
+
+  const tooLongForQr = (text) => new TextEncoder().encode(text).length > QR_MAX_BYTES;
+
+  function offerQr(msg) {
+    if (tooLongForQr(msg.text)) return send(msg.chat.id, t.qrTooLong, reply(msg));
+    return send(msg.chat.id, t.textMenu, {
+      ...reply(msg), reply_markup: new InlineKeyboard().text(t.qrButton, "qr"),
+    });
+  }
+
+  async function sendQr(msg, status) {
+    try {
+      const { png } = await makeQr(msg.text);
+      await bot.api.sendPhoto(msg.chat.id, new InputFile(png, "qr.png"), { ...HTML, ...reply(msg), caption: t.qrDone });
+      await bot.api.deleteMessage(msg.chat.id, status.message_id).catch(() => {});
+      console.log(`QR-код: ${new TextEncoder().encode(msg.text).length} байт`);
+    } catch (err) {
+      console.error("QR-код:", err.message);
+      await edit(status, t.qrFailed);
+    }
+  }
+
   // ---- Повідомлення ----
 
   // Що зробити з повідомленням користувача (після перевірки підписки).
@@ -338,7 +362,9 @@ export function createBot(token, { channel, images, albums = null, albumWait = 2
     if (image) return offerPhoto(msg, image);
     const video = videoOf(msg);
     if (video) return offerVideo(msg, video);
-    return send(msg.chat.id, msg.text?.startsWith("/start") ? t.start : t.help);
+    if (msg.text?.startsWith("/start")) return send(msg.chat.id, t.start);
+    if (msg.text && !msg.text.startsWith("/")) return offerQr(msg);
+    return send(msg.chat.id, t.help);
   }
 
   bot.command("start", (ctx) => send(ctx.chat.id, t.start));
@@ -389,6 +415,12 @@ export function createBot(token, { channel, images, albums = null, albumWait = 2
     const items = albums ? await albums.list(ctx.match[1]) : [];
     if (!items.length) return edit(menu, t.albumGone);
     return makePdf(original ?? menu, albumImages(items), menu);
+  });
+
+  onButton("qr", ({ menu, original }) => {
+    if (!original?.text) return edit(menu, t.qrGone);
+    if (tooLongForQr(original.text)) return edit(menu, t.qrTooLong);
+    return sendQr(original, menu);
   });
 
   onButton("sound", ({ menu, original }) => {
