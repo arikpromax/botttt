@@ -38,7 +38,7 @@ export const OWNER_COMMANDS = [
   ...COMMANDS,
   { command: "stats", description: "Статистика (бачиш лише ти)" },
   { command: "cipher", description: "Шифр дня в грі (бачиш лише ти)" },
-  { command: "payouts", description: "Виплати TON у грі: стан, on / off" },
+  { command: "payouts", description: "Виплати TON: стан і кнопка увімкнути" },
   { command: "rate", description: "Курс: монет за 1 TON" },
   { command: "minton", description: "Мінімальна виплата, TON" },
   { command: "budget", description: "Бюджет виплат на день, TON" },
@@ -608,15 +608,27 @@ export function createBot(token, {
   // ---- Виплати TON у грі (лише власнику) ----
   const isOwner = (ctx) => Boolean(payouts && ownerId && ctx.from?.id === ownerId);
 
-  async function payoutStatus(chatId) {
+  // Стан виплат із кнопкою «Увімкнути» / «Вимкнути». edit — оновити вже надіслане повідомлення (після кнопки).
+  async function payoutStatus(chatId, editMsg = null) {
     const now = Date.now();
     const [settings, pending, today, fund] = await Promise.all([
       payouts.settings(), payouts.pending(), payouts.dayTotal(kyivDay(now)), fundNow(now),
     ]);
     const pendingNano = pending.reduce((n, w) => n + BigInt(w.nano), 0n);
-    await send(chatId, t.payoutStatus(settings, pending.length, formatTon(pendingNano), formatTon(today)) +
-      (fund ? `\n\n${t.payoutFund(fundReport({ ...fund, rate: settings.rate }))}` : ""));
+    const text = t.payoutStatus(settings, pending.length, formatTon(pendingNano), formatTon(today)) +
+      (fund ? `\n\n${t.payoutFund(fundReport({ ...fund, rate: settings.rate }))}` : "");
+    const extra = {
+      reply_markup: new InlineKeyboard().text(settings.enabled ? t.payoutOffButton : t.payoutOnButton, settings.enabled ? "payouts:off" : "payouts:on"),
+    };
+    await (editMsg ? edit(editMsg, text, extra) : send(chatId, text, extra));
   }
+
+  bot.callbackQuery(/^payouts:(on|off)$/, async (ctx) => {
+    if (!isOwner(ctx)) return ctx.answerCallbackQuery();
+    await payouts.set("enabled", ctx.match[1] === "on" ? "1" : "0");
+    await ctx.answerCallbackQuery({ text: ctx.match[1] === "on" ? t.payoutTurnedOn : t.payoutTurnedOff });
+    await payoutStatus(ctx.chat.id, ctx.callbackQuery.message);
+  });
 
   // Дані для «Фонду»: баланс Stars бота з Telegram, Stars за останні 21 день, монети гравців, курс TON.
   async function fundNow(now) {
@@ -633,7 +645,8 @@ export function createBot(token, {
   bot.command("payouts", async (ctx, next) => {
     if (!isOwner(ctx)) return next();
     const arg = ctx.match.trim().toLowerCase();
-    if (arg === "on" || arg === "off") await payouts.set("enabled", arg === "on" ? "1" : "0");
+    if (/^(on|вкл|увімкнути)$/.test(arg)) await payouts.set("enabled", "1");
+    else if (/^(off|викл|вимкнути)$/.test(arg)) await payouts.set("enabled", "0");
     await payoutStatus(ctx.chat.id);
   });
 

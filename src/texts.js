@@ -226,7 +226,7 @@ export const t = {
     `Мінімальна виплата: ${String(s.minTon).replace(".", ",")} TON\n` +
     `Бюджет на день: ${String(s.budgetTon).replace(".", ",")} TON (сьогодні заявок на ${todayTon} TON)\n` +
     `Чекають рішення: ${pendingCount}${pendingCount ? ` (${pendingTon} TON)` : ""}\n\n` +
-    `<b>Команди</b>\n/payouts on — увімкнути, /payouts off — вимкнути\n/rate 1000000 — монет за 1 TON\n` +
+    `<b>Команди</b>\nУвімкнути чи вимкнути — кнопкою нижче (або /payouts on, /payouts off)\n/rate 1000000 — монет за 1 TON\n` +
     `/minton 0.5 — мінімальна виплата\n/budget 5 — скільки TON на день можна виплатити всім разом\n\n` +
     `<i>Гроші бот не надсилає сам: заявки приходять тобі, ти платиш зі свого гаманця й натискаєш «Виплачено».</i>`,
   // Фонд виплат: звідки гроші на виплати (Stars від покупок у грі → TON через Fragment).
@@ -249,6 +249,10 @@ export const t = {
       `<i>Оцінка: 1 Star ≈ $${STAR_USD_TEXT}${f.price ? `, TON ≈ $${f.price.toLocaleString("uk-UA", { maximumFractionDigits: 2 })}` : ""}. ` +
       `Точну суму побачиш при виводі: @BotFather → бот → Balance → Fragment.</i>`;
   },
+  payoutOnButton: "Увімкнути виплати",
+  payoutOffButton: "Вимкнути виплати",
+  payoutTurnedOn: "Виплати ввімкнено",
+  payoutTurnedOff: "Виплати вимкнено",
   payoutBadValue: (command) =>
     ({ rate: "Напиши ціле число не менше 1000, наприклад: /rate 1000000", minton: "Напиши суму в TON, наприклад: /minton 0.5",
       budget: "Напиши суму в TON на день, наприклад: /budget 5" })[command],

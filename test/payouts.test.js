@@ -172,3 +172,22 @@ describe("виплати: фонд для власника", () => {
     assert.match(msg.payload.text, /Монети гравців: 2\s000\s000 ≈ <b>2 TON<\/b>/);
   });
 });
+
+describe("виплати: увімкнення кнопкою", () => {
+  it("під статусом — кнопка «Увімкнути виплати»; натиснув — увімкнено, кнопка стала «Вимкнути»", async () => {
+    const payouts = memoryPayouts();
+    const h = harness({ ownerId: USER.id, payouts, players: memoryPlayers() });
+    const [status] = await h.post({ text: "/payouts", entities: [{ type: "bot_command", offset: 0, length: 8 }] });
+    assert.deepEqual(status.payload.reply_markup.inline_keyboard[0][0], { text: "Увімкнути виплати", callback_data: "payouts:on" });
+    const calls = await h.press("payouts:on", h.newMessage({ text: "стан" }));
+    assert.equal((await payouts.settings()).enabled, true);
+    const edited = calls.find((c) => c.method === "editMessageText");
+    assert.match(edited.payload.text, /увімкнено/);
+    assert.equal(edited.payload.reply_markup.inline_keyboard[0][0].callback_data, "payouts:off");
+    await h.post({ text: "/payouts викл", entities: [{ type: "bot_command", offset: 0, length: 8 }] });
+    assert.equal((await payouts.settings()).enabled, false, "українською теж розуміє");
+    const stranger = harness({ ownerId: 999, payouts, players: memoryPlayers() });
+    await stranger.press("payouts:on", stranger.newMessage({ text: "стан" }));
+    assert.equal((await payouts.settings()).enabled, false, "чужий не ввімкне");
+  });
+});
