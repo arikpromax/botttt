@@ -8,7 +8,7 @@ const MUTABLE = [
   "daily_day", "channel_done", "friends3_done", "streak", "streak_day", "chicken_at", "chicken_day", "chicken_count",
   "cipher_day", "cipher_tries", "cipher_tries_day", "total_taps", "best_streak", "chickens_total", "ciphers_total",
   "achievements", "boost_energy_day", "boost_energy_count", "boost_energy_at", "turbo_day", "turbo_count", "turbo_until",
-  "taps_day", "taps_today", "daily_tasks", "tasks_done", "bot_used", "site_open_at",
+  "taps_day", "taps_today", "daily_tasks", "tasks_done", "bot_used", "site_open_at", "wallet",
 ];
 const ALL = ["id", ...MUTABLE, "created_at", "version"];
 
@@ -43,6 +43,8 @@ export function d1Players(DB) {
       `UPDATE players SET bot_used = trim(bot_used || ',' || ?2, ','), version = version + 1
        WHERE id = ?1 AND instr(',' || bot_used || ',', ',' || ?2 || ',') = 0`,
     ).bind(id, feature).run(),
+    // Повернути монети (відхилена заявка на виплату) — атомарно, без читання.
+    refund: (id, coins) => DB.prepare(`UPDATE players SET coins = coins + ?2, version = version + 1 WHERE id = ?1`).bind(id, coins).run(),
     wasInvited: async (id) => Boolean(await DB.prepare(`SELECT 1 FROM invite_used WHERE id = ?1`).bind(id).first()),
     markInvited: (id) => DB.prepare(`INSERT OR IGNORE INTO invite_used (id) VALUES (?1)`).bind(id).run(),
     remove: (id) => DB.batch([
@@ -82,6 +84,10 @@ export function memoryPlayers() {
       if (row && !row.bot_used.split(",").includes(feature)) {
         Object.assign(row, { bot_used: row.bot_used ? `${row.bot_used},${feature}` : feature, version: row.version + 1 });
       }
+    },
+    async refund(id, coins) {
+      const row = rows.get(id);
+      if (row) Object.assign(row, { coins: row.coins + coins, version: row.version + 1 });
     },
     wasInvited: async (id) => memory.invitedOnce.has(id),
     markInvited: async (id) => memory.invitedOnce.add(id),

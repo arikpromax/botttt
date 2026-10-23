@@ -186,6 +186,38 @@ export const t = {
       `\n\n<i>Знеособлено: лише хеші, без імен та ідентифікаторів. Записи старші за 90 днів видаляються.</i>`;
   },
   statsFailed: "Не вдалося зібрати статистику — подивись журнал воркера.",
+  // ---- Виплати TON у грі ----
+  payoutStatus: (s, pendingCount, pendingTon, todayTon) =>
+    `<b>Виплати TON у грі: ${s.enabled ? "увімкнено" : "вимкнено"}</b>\n` +
+    `Курс: ${new Intl.NumberFormat("uk-UA").format(s.rate)} монет = 1 TON\n` +
+    `Мінімальна виплата: ${String(s.minTon).replace(".", ",")} TON\n` +
+    `Бюджет на день: ${String(s.budgetTon).replace(".", ",")} TON (сьогодні заявок на ${todayTon} TON)\n` +
+    `Чекають рішення: ${pendingCount}${pendingCount ? ` (${pendingTon} TON)` : ""}\n\n` +
+    `<b>Команди</b>\n/payouts on — увімкнути, /payouts off — вимкнути\n/rate 1000000 — монет за 1 TON\n` +
+    `/minton 0.5 — мінімальна виплата\n/budget 5 — скільки TON на день можна виплатити всім разом\n\n` +
+    `<i>Гроші бот не надсилає сам: заявки приходять тобі, ти платиш зі свого гаманця й натискаєш «Виплачено».</i>`,
+  payoutBadValue: (command) =>
+    ({ rate: "Напиши ціле число не менше 1000, наприклад: /rate 1000000", minton: "Напиши суму в TON, наприклад: /minton 0.5",
+      budget: "Напиши суму в TON на день, наприклад: /budget 5" })[command],
+  payoutOwner: (w, p) =>
+    `<b>Заявка на виплату #${w.id}</b>\n` +
+    `Гравець: ${esc(p.name)}${p.username ? ` (@${esc(p.username)})` : ""}, id ${p.id}\n` +
+    `Сума: <b>${w.ton} TON</b> (${new Intl.NumberFormat("uk-UA").format(w.coins)} монет)\n` +
+    `Гаманець: <code>${esc(w.address)}</code>\n` +
+    `У грі з ${new Date(p.created_at).toLocaleDateString("uk-UA", { timeZone: "Europe/Kyiv" })} · ` +
+    `зароблено ${new Intl.NumberFormat("uk-UA").format(p.earned)} · тапів ${new Intl.NumberFormat("uk-UA").format(p.total_taps)} · друзів ${p.invited}\n\n` +
+    `Заплати зі свого гаманця й натисни «Виплачено». «Відхилити» поверне монети гравцю.`,
+  payoutPayButton: "Оплатити в Tonkeeper",
+  payoutPaidButton: "Виплачено",
+  payoutRejectButton: "Відхилити",
+  payoutMarkedPaid: "Виплачено",
+  payoutMarkedRejected: "Відхилено — монети повернуто гравцю",
+  payoutAlreadyDecided: "Цю заявку вже вирішено.",
+  payoutPaid: (ton, address) =>
+    `<b>Виплату ${ton} TON надіслано</b> на твій гаманець <code>${esc(address)}</code>.\nДякуємо, що граєш в Ara Farm!`,
+  payoutRejected: (ton, coins) =>
+    `Заявку на виплату ${ton} TON відхилено. ${new Intl.NumberFormat("uk-UA").format(coins)} монет повернуто на твій баланс у грі.`,
+
   cipherToday: (word) =>
     `Шифр дня в грі: <b>${esc(word)}</b>\n<i>Бот публікує його в каналі щоранку о 10:00 за Києвом (влітку — об 11:00).</i>`,
 };

@@ -16,6 +16,7 @@ import { hasCyrillic, transliterate } from "./translit.js";
 import { esc, formatSize, t } from "./texts.js";
 import { cipherWord } from "./game/cipher.js";
 import { kyivDay } from "./game/rules.js";
+import { formatTon } from "./game/payouts.js";
 
 const HTML = { parse_mode: "HTML", link_preview_options: { is_disabled: true } };
 const MEMBER = new Set(["creator", "administrator", "member"]);
@@ -31,16 +32,21 @@ export const OWNER_COMMANDS = [
   ...COMMANDS,
   { command: "stats", description: "Статистика (бачиш лише ти)" },
   { command: "cipher", description: "Шифр дня в грі (бачиш лише ти)" },
+  { command: "payouts", description: "Виплати TON у грі: стан, on / off" },
+  { command: "rate", description: "Курс: монет за 1 TON" },
+  { command: "minton", description: "Мінімальна виплата, TON" },
+  { command: "budget", description: "Бюджет виплат на день, TON" },
 ];
 
 // channel — «@username» каналу для обов'язкової підписки; images — Cloudflare Images (env.IMAGES);
 // albums — тимчасове сховище фото з альбомів (albums.js); albumWait — скільки чекати решту фото альбому, мс;
 // stats — знеособлена статистика (stats.js); ownerId — Telegram id власника, лише йому доступна /stats;
 // appUrl — адреса Mini App (гра Ara Farm) для кнопки «Грати» в привітанні; cipherSecret — секрет шифру дня гри;
-// onFeature(userId, feature) — позначка для завдань гри («зроби QR-код у боті» тощо).
+// onFeature(userId, feature) — позначка для завдань гри («зроби QR-код у боті» тощо);
+// payouts / players — виплати TON у грі (game/payouts.js, game/store.js): керує ними власник.
 export function createBot(token, {
   channel, images, albums = null, stats = null, ownerId = null, appUrl = null, cipherSecret = null, onFeature = null,
-  albumWait = 2000, fetch = globalThis.fetch, ...config
+  payouts = null, players = null, albumWait = 2000, fetch = globalThis.fetch, ...config
 }) {
   const bot = new Bot(token, config);
   bot.api.config.use(autoRetry());
@@ -538,6 +544,50 @@ export function createBot(token, {
   bot.command("cipher", async (ctx, next) => {
     if (!cipherSecret || !ownerId || ctx.from?.id !== ownerId) return next();
     await send(ctx.chat.id, t.cipherToday(await cipherWord(kyivDay(Date.now()), cipherSecret)));
+  });
+
+  // ---- Виплати TON у грі (лише власнику) ----
+  const isOwner = (ctx) => Boolean(payouts && ownerId && ctx.from?.id === ownerId);
+
+  async function payoutStatus(chatId) {
+    const [settings, pending, today] = await Promise.all([payouts.settings(), payouts.pending(), payouts.dayTotal(kyivDay(Date.now()))]);
+    const pendingNano = pending.reduce((n, w) => n + BigInt(w.nano), 0n);
+    await send(chatId, t.payoutStatus(settings, pending.length, formatTon(pendingNano), formatTon(today)));
+  }
+
+  // /payouts — стан; /payouts on|off — увімкнути чи вимкнути виплати.
+  bot.command("payouts", async (ctx, next) => {
+    if (!isOwner(ctx)) return next();
+    const arg = ctx.match.trim().toLowerCase();
+    if (arg === "on" || arg === "off") await payouts.set("enabled", arg === "on" ? "1" : "0");
+    await payoutStatus(ctx.chat.id);
+  });
+
+  // /rate 1000000 — монет за 1 TON; /minton 0.5 — мінімальна виплата; /budget 5 — TON на день для всіх.
+  const SETTINGS = { rate: ["rate", (v) => Number.isInteger(v) && v >= 1000], minton: ["minTon", (v) => v > 0], budget: ["budgetTon", (v) => v >= 0] };
+  for (const [command, [key, valid]] of Object.entries(SETTINGS)) {
+    bot.command(command, async (ctx, next) => {
+      if (!isOwner(ctx)) return next();
+      const value = Number(ctx.match.trim().replace(",", "."));
+      if (!valid(value)) return send(ctx.chat.id, t.payoutBadValue(command));
+      await payouts.set(key, value);
+      await payoutStatus(ctx.chat.id);
+    });
+  }
+
+  // Кнопки під заявкою: «Виплачено» (власник уже заплатив) або «Відхилити» (монети повертаються гравцю).
+  bot.callbackQuery(/^wd:(paid|reject):(\d+)$/, async (ctx) => {
+    if (!isOwner(ctx)) return ctx.answerCallbackQuery();
+    const status = ctx.match[1] === "paid" ? "paid" : "rejected";
+    const w = await payouts.decide(Number(ctx.match[2]), status, Date.now());
+    if (!w) return ctx.answerCallbackQuery({ text: t.payoutAlreadyDecided, show_alert: true });
+    if (status === "rejected") await players.refund(w.user_id, w.coins);
+    await ctx.answerCallbackQuery({ text: status === "paid" ? t.payoutMarkedPaid : t.payoutMarkedRejected });
+    const msg = ctx.callbackQuery.message;
+    await edit(msg, `${msg.text ? esc(msg.text) : ""}\n\n<b>${status === "paid" ? t.payoutMarkedPaid : t.payoutMarkedRejected}</b>`);
+    const ton = formatTon(w.nano);
+    await send(w.user_id, status === "paid" ? t.payoutPaid(ton, w.address) : t.payoutRejected(ton, w.coins))
+      .catch((err) => console.error("Гравцю не надіслано:", err.description ?? err.message));
   });
 
   bot.chatType("private").on("message", async (ctx) => {

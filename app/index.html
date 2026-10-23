@@ -206,6 +206,16 @@
     .checks li { display: flex; gap: 10px; align-items: center; font-size: 14.5px; }
     .checks .icon { width: 20px; height: 20px; padding: 2px; border-radius: 6px; color: #fff; background: #23a35a; }
     .wallet-art { display: block; width: 150px; margin: 6px auto 0; }
+    .badge-on { margin-left: auto; padding: 4px 9px; border-radius: 9px; font-size: 12px; font-weight: 700; color: var(--green);
+      background: rgba(61, 220, 132, 0.12); border: 1px solid rgba(61, 220, 132, 0.45); }
+    .pay-card { padding: 14px; margin-top: 12px; }
+    .pay-card .line { display: flex; justify-content: space-between; gap: 10px; padding: 4px 0; font-size: 14.5px; }
+    .pay-card .line span:first-child { color: var(--hint); }
+    .addr { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; word-break: break-all; user-select: text; -webkit-user-select: text; }
+    .checks .miss .icon { background: #46536f; }
+    .wd { display: flex; justify-content: space-between; gap: 8px; padding: 10px 0; font-size: 14px; }
+    .wd + .wd { border-top: 1px solid var(--line); }
+    .wd .st-pending { color: var(--gold); } .wd .st-paid { color: var(--green); } .wd .st-rejected { color: var(--red); }
 
     .toast { position: fixed; top: calc(12px + env(safe-area-inset-top)); left: 50%; z-index: 60; max-width: calc(100% - 32px);
       transform: translate(-50%, -140%); padding: 11px 16px; border-radius: 14px; font-size: 14px; font-weight: 600; text-align: center;
@@ -489,7 +499,7 @@
     <div class="card menu">
       <button data-page="achievements"><span class="tile tone-gold"><svg class="icon"><use href="#i-crown"/></svg></span><span class="grow"><b>Досягнення</b><div class="hint" id="p-ach">0 із 17</div></span><svg class="icon chev"><use href="#i-chev"/></svg></button>
       <button data-page="features"><span class="tile tone-blue"><svg class="icon"><use href="#i-convert"/></svg></span><span class="grow"><b>Що вміє бот</b><div class="hint">Конвертер: TikTok, фото, PDF, QR, валюти</div></span><svg class="icon chev"><use href="#i-chev"/></svg></button>
-      <button data-page="payouts"><span class="tile tone-teal"><svg class="icon"><use href="#i-wallet"/></svg></span><span class="grow"><b>Виплати TON</b><div class="hint">Поки вимкнено</div></span><svg class="icon chev"><use href="#i-chev"/></svg></button>
+      <button data-page="payouts"><span class="tile tone-teal"><svg class="icon"><use href="#i-wallet"/></svg></span><span class="grow"><b>Виплати TON</b><div class="hint">Монети → TON на твій гаманець</div></span><svg class="icon chev"><use href="#i-chev"/></svg></button>
       <button id="channel"><span class="tile tone-violet"><svg class="icon"><use href="#i-megaphone"/></svg></span><span class="grow"><b>Канал AraWebsite</b><div class="hint">Новини бота й гри</div></span><svg class="icon chev"><use href="#i-chev"/></svg></button>
       <button id="privacy"><span class="tile tone-green"><svg class="icon"><use href="#i-shield"/></svg></span><span class="grow"><b>Політика конфіденційності</b></span><svg class="icon chev"><use href="#i-chev"/></svg></button>
       <button id="reset"><span class="tile tone-red"><svg class="icon"><use href="#i-trash"/></svg></span><span class="grow danger"><b>Видалити мій прогрес</b></span></button>
@@ -537,24 +547,13 @@
 <div class="page" id="page-payouts">
   <main>
     <button class="back" data-close><svg class="icon"><use href="#i-chev"/></svg>Назад</button>
-    <div class="title"><span class="tile tone-teal"><svg class="icon"><use href="#i-wallet"/></svg></span><h1>Виплати TON</h1><span class="badge-off">Вимкнено</span></div>
+    <div class="title"><span class="tile tone-teal"><svg class="icon"><use href="#i-wallet"/></svg></span><h1>Виплати TON</h1><span class="badge-off" id="payout-badge">…</span></div>
     <svg class="wallet-art" viewBox="0 0 150 110" aria-hidden="true">
       <rect x="18" y="30" width="114" height="72" rx="14" fill="#2a7de1"/><rect x="18" y="30" width="114" height="20" rx="10" fill="#1f63bd"/>
       <rect x="92" y="56" width="44" height="26" rx="9" fill="#1a55a8"/><circle cx="106" cy="69" r="5" fill="#ffd257"/>
       <g transform="translate(70 4) scale(.34)"><use href="#coin"/></g><g transform="translate(96 14) scale(.26)"><use href="#coin"/></g>
     </svg>
-    <h2 style="text-align:center;margin-top:10px">Реальні виплати ще не запущені</h2>
-    <p class="lead" style="text-align:center">Зараз гра працює в тестовому режимі: монети ігрові, обміняти їх на гроші чи криптовалюту поки не можна. Якщо виплати з'являться, ми заздалегідь напишемо про це в каналі AraWebsite — разом з умовами.</p>
-    <button class="btn ghost" id="payout-channel"><svg class="icon"><use href="#i-megaphone"/></svg>Стежити в каналі</button>
-    <h2>Що потрібно для запуску виплат</h2>
-    <div class="card" style="padding:16px">
-      <ul class="checks">
-        <li><svg class="icon"><use href="#i-check"/></svg>Підключення гаманця через TON Connect</li>
-        <li><svg class="icon"><use href="#i-check"/></svg>Курс обміну монет і мінімальна сума виплати</li>
-        <li><svg class="icon"><use href="#i-check"/></svg>Захист від ботів і накруток</li>
-        <li><svg class="icon"><use href="#i-check"/></svg>Заявки на виплату та їхні статуси</li>
-      </ul>
-    </div>
+    <div id="payout-body"><p class="lead" style="text-align:center">Завантаження…</p></div>
   </main>
 </div>
 
@@ -1053,7 +1052,6 @@
 
   document.querySelectorAll("[data-page]").forEach((b) => b.addEventListener("click", () => openPage(b.dataset.page)));
   $("channel").addEventListener("click", () => openTg(CHANNEL_LINK));
-  $("payout-channel").addEventListener("click", () => openTg(CHANNEL_LINK));
   $("to-bot").addEventListener("click", () => openTg(BOT_LINK));
   $("privacy").addEventListener("click", () => openWeb(new URL("/privacy", location.href).href));
   $("reset").addEventListener("click", () => {
@@ -1234,6 +1232,143 @@
     }
   });
 
+  // ---- Виплати TON ----
+  // Гаманець — через TON Connect (як вимагає Telegram); бібліотеку вантажимо лише тут, щоб гра не важчала.
+  let payoutInfo = null;
+  let tonUI = null;
+  const shortAddr = (a) => (a ? `${a.slice(0, 6)}…${a.slice(-6)}` : "");
+  const loadScript = (src) => new Promise((ok, fail) => {
+    const s = document.createElement("script");
+    s.src = src;
+    s.onload = ok;
+    s.onerror = fail;
+    document.head.append(s);
+  });
+
+  async function tonConnect() {
+    if (tonUI) return tonUI;
+    await loadScript("https://unpkg.com/@tonconnect/ui@3.0.2/dist/tonconnect-ui.min.js");
+    tonUI = new TON_CONNECT_UI.TonConnectUI({
+      manifestUrl: new URL("/tonconnect-manifest.json", location.href).href,
+      actionsConfiguration: { twaReturnUrl: `${BOT_LINK}?startapp` },
+      language: "en",
+    });
+    tonUI.onStatusChange(async (w) => {
+      if (!w || !payoutInfo) return;
+      const res = await call("wallet", { address: w.account.address }).catch(() => null);
+      if (!res?.wallet) return toast("Цей гаманець не підходить — потрібна звичайна адреса TON");
+      if (res.wallet !== payoutInfo.wallet) toast("Гаманець підключено");
+      payoutInfo.wallet = res.wallet;
+      renderPayouts();
+    });
+    return tonUI;
+  }
+
+  async function loadPayouts() {
+    await flush();
+    const res = await call("payouts").catch(() => null);
+    if (!res?.settings) {
+      $("payout-body").innerHTML = `<p class="lead" style="text-align:center">Не вдалося завантажити — спробуй ще раз.</p>`;
+      return;
+    }
+    payoutInfo = res;
+    renderPayouts();
+  }
+
+  const WD_STATUS = { pending: ["Очікує", "st-pending"], paid: ["Виплачено", "st-paid"], rejected: ["Відхилено, монети повернуто", "st-rejected"] };
+
+  function renderPayouts() {
+    const p = payoutInfo, s = p.settings, r = p.rules;
+    $("payout-badge").className = s.enabled ? "badge-on" : "badge-off";
+    $("payout-badge").textContent = s.enabled ? "Увімкнено" : "Вимкнено";
+    const tonOf = (coins) => (coins / s.rate).toLocaleString("uk-UA", { maximumFractionDigits: 4 });
+    const wallet = `<div class="card pay-card"><b>Гаманець</b>${p.wallet
+      ? `<div class="addr" style="margin-top:6px">${p.wallet}</div>
+         <div style="display:flex;gap:8px;margin-top:10px"><button class="btn ghost" data-pay="connect">Змінити</button><button class="btn ghost" data-pay="disconnect">Відключити</button></div>`
+      : `<p class="hint" style="margin:4px 0 10px">Tonkeeper, Telegram Wallet чи інший гаманець TON.</p>
+         <button class="btn" data-pay="connect">${icon("i-wallet")}Підключити гаманець</button>`}</div>`;
+    if (!s.enabled) {
+      $("payout-body").innerHTML = `
+        <h2 style="text-align:center;margin-top:10px">Виплати поки вимкнені</h2>
+        <p class="lead" style="text-align:center">Власник гри вмикає виплати, коли є фонд. Гаманець можна підключити вже зараз — коли виплати запрацюють, ми напишемо в каналі AraWebsite.</p>
+        ${wallet}`;
+      return;
+    }
+    const cond = [
+      [p.days >= r.minDays, `У грі щонайменше ${r.minDays} днів (зараз ${p.days})`],
+      [p.taps >= r.minTaps, `Щонайменше ${fmt(r.minTaps)} тапів (зараз ${fmt(p.taps)})`],
+      [S.tasks.channel.done, "Підписка на канал AraWebsite"],
+      [Boolean(p.wallet), "Підключений гаманець"],
+    ].map(([ok, text]) => `<li class="${ok ? "" : "miss"}">${icon(ok ? "i-check" : "i-x")}${text}</li>`).join("");
+    const history = p.history.length ? `<h2>Мої заявки</h2><div class="card" style="padding:4px 14px">${p.history.map((w) => {
+      const [label, cls] = WD_STATUS[w.status] ?? [w.status, ""];
+      return `<div class="wd"><span>#${w.id} · <b>${w.ton} TON</b><div class="hint">${new Date(w.at).toLocaleDateString("uk-UA")} · ${fmt(w.coins)} монет</div></span><span class="${cls}">${label}</span></div>`;
+    }).join("")}</div>` : "";
+    $("payout-body").innerHTML = `
+      <div class="card pay-card">
+        <div class="line"><span>Курс</span><b>${fmt(s.rate)} монет = 1 TON</b></div>
+        <div class="line"><span>Мінімум</span><b>${dec(s.minTon)} TON (${fmt(Math.ceil(s.minTon * s.rate))} монет)</b></div>
+        <div class="line"><span>Твій баланс</span><b>${fmt(coinsNow())} ≈ ${tonOf(coinsNow())} TON</b></div>
+      </div>
+      ${wallet}
+      <div class="card pay-card"><b>Умови виведення</b><ul class="checks" style="margin-top:10px">${cond}</ul></div>
+      <div class="card pay-card">
+        <b>Вивести монети</b>
+        <div class="cipher-row"><input id="wd-coins" type="number" inputmode="numeric" min="1" step="1" placeholder="Скільки монет">
+          <button class="small-btn" data-pay="all">Усі</button></div>
+        <div class="hint" id="wd-ton" style="margin-top:6px">≈ 0 TON</div>
+        <button class="btn" data-pay="withdraw" style="margin-top:12px">Вивести</button>
+        <p class="hint" style="margin:10px 0 0">Виплати робить власник гри вручну, зазвичай протягом доби. Монети списуються одразу, а якщо заявку відхилять — повертаються. Одна заявка на добу.</p>
+      </div>
+      ${history}`;
+    $("wd-coins").addEventListener("input", (e) => ($("wd-ton").textContent = `≈ ${tonOf(Number(e.target.value) || 0)} TON`));
+  }
+
+  const WD_ERRORS = {
+    disabled: "Виплати зараз вимкнені", wallet: "Спершу підключи гаманець", young: "Виводити можна після тижня в грі",
+    inactive: "Потрібно більше тапів", not_member: "Підпишись на канал AraWebsite", pending: "У тебе вже є заявка, що чекає",
+    cooldown: "Одна заявка на добу — спробуй пізніше", amount: "Вкажи, скільки монет вивести", coins: "Не вистачає монет",
+    min: "Це менше за мінімальну виплату", budget: "Ліміт виплат на сьогодні вичерпано — спробуй завтра",
+  };
+
+  $("payout-body").addEventListener("click", async (e) => {
+    const action = e.target.closest("[data-pay]")?.dataset.pay;
+    if (!action) return;
+    haptic("select");
+    if (action === "connect") {
+      try {
+        const ui = await tonConnect();
+        if (ui.connected) await ui.disconnect();
+        await ui.openModal();
+      } catch {
+        toast("Не вдалося відкрити гаманці — спробуй ще раз");
+      }
+    } else if (action === "disconnect") {
+      if (tonUI?.connected) await tonUI.disconnect().catch(() => {});
+      await call("wallet", { address: null }).catch(() => null);
+      payoutInfo.wallet = null;
+      renderPayouts();
+    } else if (action === "all") {
+      $("wd-coins").value = Math.floor(coinsNow());
+      $("wd-coins").dispatchEvent(new Event("input"));
+    } else if (action === "withdraw") {
+      const coins = Math.floor(Number($("wd-coins").value));
+      e.target.disabled = true;
+      await flush();
+      const res = await call("withdraw", { coins }).catch(() => null);
+      if (res?.state) adopt(res.state);
+      if (res?.status === 200) {
+        haptic("success");
+        toast(`Заявку на ${res.withdrawal.ton} TON прийнято — чекай на виплату`);
+        loadPayouts();
+      } else {
+        haptic("error");
+        toast(WD_ERRORS[res?.error] ?? "Не вдалося — спробуй ще раз");
+        e.target.disabled = false;
+      }
+    }
+  });
+
   // ---- Курка ----
   // Пролітає над фермою нечасто: сервер дозволяє не частіше ніж раз на 15 хв (і 8 разів на день),
   // а ми ще й чекаємо випадкові 1–10 хв понад це. Зловив — +300.
@@ -1312,6 +1447,7 @@
     haptic("select");
     $(`page-${name}`).classList.add("on");
     overlayChanged();
+    if (name === "payouts") loadPayouts();
   }
   function closeAll() {
     const sheet = $("sheet");
@@ -1384,6 +1520,23 @@
       if (body.kind === "energy") (d.energy = d.energyMax), (b.readyAt = now + 3_600_000);
       else b.until = now + 20_000;
       return out();
+    }
+    if (path === "payouts") {
+      d.payout ??= { wallet: null, history: [] };
+      return { status: 200, settings: { enabled: true, rate: 1_000_000, minTon: 0.5 }, rules: { minDays: 7, minTaps: 3000 },
+        wallet: d.payout.wallet, coins: d.coins, taps: 1840, days: 9, history: d.payout.history };
+    }
+    if (path === "wallet") {
+      d.payout.wallet = body.address ? "UQDtFpEwcFAEcRe5mLVh2N6C0x-_hJEM7W61_JLnSF74p9dz" : null;
+      return out({ wallet: d.payout.wallet });
+    }
+    if (path === "withdraw") {
+      if (!d.payout.wallet) return out({ error: "wallet" }, 409);
+      if (body.coins < 500_000) return out({ error: "min" }, 409);
+      d.coins -= body.coins;
+      const ton = String(body.coins / 1_000_000).replace(".", ",");
+      d.payout.history.unshift({ id: d.payout.history.length + 1, coins: body.coins, ton, status: "pending", at: now });
+      return out({ withdrawal: { id: 1, ton } });
     }
     if (path === "achievement") {
       const a = d.achievements.find((x) => x.id === body.id);

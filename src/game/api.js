@@ -2,6 +2,7 @@
 // Сервер перевіряє підпис Telegram і сам рахує монети, енергію та нагороди.
 import { verifyInitData } from "./auth.js";
 import { isCipher } from "./cipher.js";
+import { PAYOUT_RULES, checkWithdrawal, formatTon, normalizeAddress } from "./payouts.js";
 import {
   REWARDS, applyTaps, buyUpgrade, claimAchievement, claimChicken, claimCipher, claimTask, joinByInvite, kyivDay, newPlayer,
   publicState, settle, touchStreak, useBoost,
@@ -11,8 +12,11 @@ const json = (data, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
 
 // store — d1Players / memoryPlayers; token — токен бота; checkMember(userId) — чи підписаний на канал;
-// botUsername — для посилання-запрошення; secret — для шифру дня.
-export function gameApi({ store, token, checkMember, botUsername, secret, clock = () => Date.now() }) {
+// botUsername — для посилання-запрошення; secret — для шифру дня;
+// payouts — d1Payouts / memoryPayouts; notifyOwner(withdrawal, player) — заявка на виплату власнику в бот.
+export function gameApi({
+  store, token, checkMember, botUsername, secret, payouts = null, notifyOwner = async () => {}, clock = () => Date.now(),
+}) {
   // Гравець за даними Telegram; новий — створюємо (і даємо бонус за запрошення, якщо прийшов за посиланням
   // уперше в житті: хто видалив прогрес і зайшов знову, другому разу бонусу не приносить).
   async function load(auth, now) {
@@ -84,6 +88,49 @@ export function gameApi({ store, token, checkMember, botUsername, secret, clock 
         return error === "wrong" ? { error, keep: true } : refusal(error);
       }));
     },
+    // ---- Виплати TON ----
+    async payouts(auth) {
+      const [settings, p, history] = await Promise.all([payouts.settings(), store.get(auth.user.id), payouts.history(auth.user.id)]);
+      if (!p) return json({ error: "no_player" }, 404);
+      return json({
+        settings: { enabled: settings.enabled, rate: settings.rate, minTon: settings.minTon },
+        rules: PAYOUT_RULES, wallet: p.wallet, coins: p.coins, taps: p.total_taps,
+        days: Math.floor((clock() - p.created_at) / 86_400_000),
+        history: history.map((w) => ({ id: w.id, coins: w.coins, ton: formatTon(w.nano), status: w.status, address: w.address, at: w.created_at })),
+      });
+    },
+    async wallet(auth, body) {
+      const address = body.address == null ? null : normalizeAddress(body.address);
+      if (body.address != null && !address) return json({ error: "wallet" }, 400);
+      return reply(await mutate(auth, (p) => ((p.wallet = address), {})), { wallet: address });
+    },
+    async withdraw(auth, body) {
+      const now = clock();
+      const coins = Number(body.coins);
+      const [settings, p, last, todayNano, member] = await Promise.all([
+        payouts.settings(), store.get(auth.user.id), payouts.last(auth.user.id), payouts.dayTotal(kyivDay(now)),
+        checkMember(auth.user.id).catch(() => false),
+      ]);
+      if (!p) return json({ error: "no_player" }, 404);
+      const check = checkWithdrawal(p, { settings, coins, member, now, last, todayNano });
+      if (check.error) return json({ error: check.error }, 409);
+      // Списуємо монети; не вистачило (паралельний запит) — відмова.
+      const out = await mutate(auth, (pl) => (pl.coins < coins ? { error: "coins" } : ((pl.coins -= coins), {})));
+      if (out.result.error) return reply(out);
+      let id;
+      try {
+        id = await payouts.create({
+          user_id: p.id, name: p.name, address: p.wallet, coins, nano: check.nano, day: kyivDay(now), created_at: now,
+        });
+      } catch (err) {
+        await store.refund(p.id, coins); // заявка не записалась — монети назад
+        throw err;
+      }
+      const withdrawal = { id, coins, nano: check.nano, address: p.wallet, ton: formatTon(check.nano) };
+      await notifyOwner(withdrawal, out.p).catch((err) => console.error("Заявку не надіслано власнику:", err.message));
+      return reply(out, { withdrawal: { id, ton: withdrawal.ton } });
+    },
+
     async friends(auth) {
       const me = await store.get(auth.user.id);
       return json({ friends: await store.friends(auth.user.id, me?.referrer ?? null) });

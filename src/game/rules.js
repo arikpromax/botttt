@@ -104,7 +104,7 @@ export function newPlayer(user, now) {
     chicken_at: now, chicken_day: null, chicken_count: 0,
     cipher_day: null, cipher_tries: 0, cipher_tries_day: null,
     total_taps: 0, best_streak: 0, chickens_total: 0, ciphers_total: 0, achievements: "",
-    taps_day: null, taps_today: 0, daily_tasks: "", tasks_done: "", bot_used: "", site_open_at: 0,
+    taps_day: null, taps_today: 0, daily_tasks: "", tasks_done: "", bot_used: "", site_open_at: 0, wallet: null,
     boost_energy_day: null, boost_energy_count: 0, boost_energy_at: 0,
     turbo_day: null, turbo_count: 0, turbo_until: 0,
     created_at: now, version: 0,

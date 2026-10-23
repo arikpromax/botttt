@@ -8,6 +8,26 @@ import { gameApi } from "./game/api.js";
 import { d1Players } from "./game/store.js";
 import { cipherPost, cipherWord } from "./game/cipher.js";
 import { CIPHER, kyivDay } from "./game/rules.js";
+import { d1Payouts } from "./game/payouts.js";
+import { t } from "./texts.js";
+
+// Заявка на виплату — власнику в бот: кнопка оплати в Tonkeeper (сума й коментар уже заповнені) і рішення.
+async function notifyOwner(env, w, p) {
+  const pay = `https://app.tonkeeper.com/transfer/${w.address}?amount=${w.nano}&text=${encodeURIComponent(`Ara Farm #${w.id}`)}`;
+  const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      chat_id: Number(env.OWNER_ID), text: t.payoutOwner(w, p), parse_mode: "HTML",
+      reply_markup: { inline_keyboard: [
+        [{ text: t.payoutPayButton, url: pay }],
+        [{ text: t.payoutPaidButton, callback_data: `wd:paid:${w.id}` }, { text: t.payoutRejectButton, callback_data: `wd:reject:${w.id}` }],
+      ] },
+    }),
+  });
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.description);
+}
 
 const MEMBER = new Set(["creator", "administrator", "member"]);
 
@@ -19,6 +39,8 @@ function setupGame(env) {
     token: env.BOT_TOKEN,
     botUsername: env.BOT_USERNAME,
     secret: env.WEBHOOK_SECRET, // від нього залежить шифр дня
+    payouts: d1Payouts(env.DB),
+    notifyOwner: (w, p) => notifyOwner(env, w, p),
     // Завдання «підпишись на канал»: питаємо в Telegram, чи людина в каналі.
     async checkMember(userId) {
       const url = `https://api.telegram.org/bot${env.BOT_TOKEN}/getChatMember?chat_id=${encodeURIComponent(env.CHANNEL)}&user_id=${userId}`;
@@ -43,6 +65,9 @@ function setup(env) {
       cipherSecret: env.WEBHOOK_SECRET,
       // Завдання гри «зроби щось у боті»: позначаємо функцію в прогресі гравця (якщо він грає).
       onFeature: env.DB ? (userId, feature) => d1Players(env.DB).markBotUse(userId, feature) : null,
+      // Виплати TON у грі: власник керує командами й кнопками під заявками.
+      payouts: env.DB ? d1Payouts(env.DB) : null,
+      players: env.DB ? d1Players(env.DB) : null,
     });
     await bot.init();
     return bot;
