@@ -4,7 +4,10 @@ import assert from "node:assert/strict";
 import { signInitData, verifyInitData } from "../src/game/auth.js";
 import { gameApi } from "../src/game/api.js";
 import { memoryPlayers } from "../src/game/store.js";
-import { applyTaps, levelOf, newPlayer, settle, UPGRADES } from "../src/game/rules.js";
+import {
+  CHICKEN, STREAK_REWARDS, TAPS_PER_SECOND, UPGRADES, applyTaps, claimChicken, dailyReward, leagueOf, newPlayer, settle, touchStreak,
+} from "../src/game/rules.js";
+import { cipherWord, isCipher, normalizeWord } from "../src/game/cipher.js";
 
 const TOKEN = "123:TEST";
 const T0 = Date.UTC(2026, 9, 23, 10, 0, 0);
@@ -19,7 +22,7 @@ async function initData(user, { startParam, authDate = T0 / 1000, token = TOKEN 
 function game({ member = false } = {}) {
   let now = T0;
   const store = memoryPlayers();
-  const handle = gameApi({ store, token: TOKEN, botUsername: "test_bot", checkMember: async () => member, clock: () => now });
+  const handle = gameApi({ store, token: TOKEN, botUsername: "test_bot", secret: "s", checkMember: async () => member, clock: () => now });
   const call = async (path, user, body = {}, opts) => {
     const res = await handle(new Request(`https://x.test/api/${path}`, {
       method: "POST", body: JSON.stringify({ auth: await initData(user, { authDate: now / 1000, ...opts }), ...body }),
@@ -69,14 +72,64 @@ describe("гра: правила", () => {
     const p = newPlayer(ANNA, T0);
     let gained = 0;
     for (let s = 1; s <= 3600; s++) gained += settle(p, T0 + s * 1000); // синхронізація щосекунди
-    assert.equal(gained, 10, "10 монет за годину навіть при частих запитах");
-    assert.equal(settle(p, T0 + 3600_000 + 48 * 3600_000), 80, "за дві доби — лише 8 годин");
+    assert.equal(gained, 50, "50 монет за годину навіть при частих запитах");
+    assert.equal(settle(p, T0 + 3600_000 + 48 * 3600_000), 400, "за дві доби — лише 8 годин");
   });
 
-  it("рівень гравця — за всіма заробленими монетами", () => {
-    assert.deepEqual(levelOf(0), { level: 1, from: 0, to: 1000 });
-    assert.deepEqual(levelOf(5200), { level: 3, from: 5000, to: 20000 });
-    assert.equal(levelOf(1e9).to, null);
+  it("ліга — за всіма заробленими монетами", () => {
+    assert.deepEqual(leagueOf(0), { league: 0, from: 0, to: 10_000 });
+    assert.deepEqual(leagueOf(150_000), { league: 2, from: 100_000, to: 500_000 });
+    assert.deepEqual(leagueOf(1e9), { league: 5, from: 10_000_000, to: null });
+  });
+
+  it("економіка: покращення окупаються, але не швидко; новачок на перше покращення працює кілька днів", () => {
+    // Пасивний дохід: кожне покращення окупається за 3 доби… 3 місяці, і що далі — то довше.
+    const p = UPGRADES.passive;
+    const payback = p.costs.map((cost, i) => cost / (p.values[i + 1] - p.values[i]));
+    assert.ok(payback.every((h, i) => h >= 72 && h <= 2400 && (i === 0 || h > payback[i - 1])), payback.join(" "));
+    // Тап: +1 монета за тап при 1 енергії/с — це +3600 за годину безперервного тапання → ~3 год.
+    assert.ok(UPGRADES.tap.costs[0] / 3600 >= 2.5);
+    // Новачок за день: 5 заходів по повній енергії + щоденна нагорода + пасивний дохід за 3 заходи по 8 год.
+    const day = 5 * UPGRADES.energy.values[0] + STREAK_REWARDS[0] + 24 * UPGRADES.passive.values[0];
+    assert.ok(UPGRADES.tap.costs[0] / day >= 2 && UPGRADES.tap.costs[0] / day <= 5, `${day} за день`);
+    // Енергія понад швидкість пальця не потрібна.
+    assert.ok(Math.max(...UPGRADES.regen.values) <= TAPS_PER_SECOND);
+  });
+
+  it("вогник: серія росте щодня, пропустив день — згорає; щоденна нагорода росте з серією", () => {
+    const p = newPlayer(ANNA, T0);
+    const DAY = 24 * 3600_000;
+    assert.deepEqual(touchStreak(p, T0), { lost: 0 });
+    assert.equal(p.streak, 1);
+    touchStreak(p, T0 + 3600_000);
+    assert.equal(p.streak, 1, "у той самий день — не росте");
+    for (let d = 1; d <= 7; d++) touchStreak(p, T0 + d * DAY);
+    assert.equal(p.streak, 8);
+    assert.equal(dailyReward(1), 500);
+    assert.equal(dailyReward(3), 1500);
+    assert.equal(dailyReward(8), 7500, "після 7-го дня — як 7-й");
+    assert.deepEqual(touchStreak(p, T0 + 9 * DAY), { lost: 8 }, "пропустив день — згоріло 8");
+    assert.equal(p.streak, 1);
+  });
+
+  it("курка: не частіше ніж раз на 15 хв і не більше 8 на день", () => {
+    const p = newPlayer(ANNA, T0);
+    assert.equal(claimChicken(p, T0 + 60_000), "early", "новачку — не одразу");
+    let t = T0;
+    for (let i = 0; i < 8; i++) assert.equal(claimChicken(p, (t += 15 * 60_000)), null);
+    assert.equal(p.chicken_count, 8);
+    assert.ok(p.coins >= 8 * CHICKEN.reward);
+    assert.equal(claimChicken(p, (t += 15 * 60_000)), "limit");
+  });
+
+  it("шифр дня: одне слово на день для всіх, регістр і латинські двійники не важливі", async () => {
+    const word = await cipherWord("2026-10-23", "s");
+    assert.equal(word, await cipherWord("2026-10-23", "s"));
+    assert.ok(await isCipher(` ${word.toLowerCase()} `, "2026-10-23", "s"));
+    assert.equal(normalizeWord("Moлoкo"), "МОЛОКО");
+    const days = new Set();
+    for (let d = 1; d <= 20; d++) days.add(await cipherWord(`2026-11-${String(d).padStart(2, "0")}`, "s"));
+    assert.ok(days.size >= 12, "слова змінюються день у день");
   });
 
   it("ціни покращень: перший рівень — 10 000 / 15 000 / 30 000 / 20 000, далі ростуть; рівнів — 10", () => {
@@ -133,10 +186,29 @@ describe("гра: API", () => {
     const anna = await g.call("me", ANNA);
     assert.equal(anna.state.invited, 2);
     assert.equal(anna.state.refBonus, 3500);
-    const { friends } = await g.call("friends", ANNA);
-    assert.deepEqual(friends.map((f) => [f.name, f.ref_reward]), [["Богдан", 2500], ["Олег", 1000]]);
     const self = await g.call("me", { id: 900, first_name: "Сам" }, {}, { startParam: "ref_900" });
     assert.equal(self.welcome, 0, "себе запросити не можна");
+  });
+
+  it("рейтинг друзів: я, хто мене запросив, і кого запросив я — за заробленим", async () => {
+    const g = game();
+    await g.call("me", ANNA);
+    await g.call("me", BOHDAN, {}, { startParam: "ref_501" });
+    await g.call("me", { id: 777, first_name: "Олег" }, {}, { startParam: "ref_502" });
+    g.store.rows.get(777).earned = 9000;
+    const { friends } = await g.call("friends", BOHDAN);
+    assert.deepEqual(friends.map((f) => [f.name, f.earned]), [["Олег", 9000], ["Анна", 2500], ["Богдан", 1500]]);
+    assert.equal(friends.find((f) => f.name === "Олег").ref_reward, 1000, "Олега запросив Богдан");
+  });
+
+  it("видалив прогрес і зайшов знову за посиланням — другові бонус удруге не нараховується", async () => {
+    const g = game();
+    await g.call("me", ANNA);
+    await g.call("me", BOHDAN, {}, { startParam: "ref_501" });
+    await g.call("delete", BOHDAN);
+    const again = await g.call("me", BOHDAN, {}, { startParam: "ref_501" });
+    assert.equal(again.welcome, 0);
+    assert.equal((await g.call("me", ANNA)).state.refBonus, 2500, "лише перший раз");
   });
 
   it("завдання: щоденне — раз на день, канал — лише з підпискою, 3 друзі — коли їх 3", async () => {
@@ -145,13 +217,48 @@ describe("гра: API", () => {
     assert.equal((await g.call("task", ANNA, { id: "daily" })).state.coins, 500);
     assert.equal((await g.call("task", ANNA, { id: "daily" })).error, "done");
     g.wait(24 * 3600_000);
-    assert.equal((await g.call("task", ANNA, { id: "daily" })).status, 200, "наступного дня — знову");
+    const day2 = await g.call("task", ANNA, { id: "daily" });
+    // 500 (день 1) + 1000 (день 2, серія) + пасивний дохід за 8 год (50/год).
+    assert.equal(day2.state.coins, 500 + 1000 + 8 * 50, "наступного дня — знову, і вже 1000 (серія 2 дні)");
+    assert.equal(day2.state.streak, 2);
     assert.equal((await g.call("task", ANNA, { id: "channel" })).error, "not_member");
     assert.equal((await g.call("task", ANNA, { id: "friends3" })).error, "not_enough");
 
     const member = game({ member: true });
     await member.call("me", ANNA);
     assert.equal((await member.call("task", ANNA, { id: "channel" })).state.tasks.channel.done, true);
+  });
+
+  it("вогник у грі: зайшов через день — сервер каже, скільки днів згоріло", async () => {
+    const g = game();
+    await g.call("me", ANNA);
+    for (let d = 0; d < 3; d++) {
+      g.wait(24 * 3600_000);
+      await g.call("me", ANNA);
+    }
+    g.wait(48 * 3600_000);
+    const back = await g.call("me", ANNA);
+    assert.equal(back.streakLost, 4);
+    assert.equal(back.state.streak, 1);
+  });
+
+  it("курка й шифр дня через API", async () => {
+    const g = game();
+    await g.call("me", ANNA);
+    assert.equal((await g.call("chicken", ANNA)).error, "early");
+    g.wait(16 * 60_000);
+    const caught = await g.call("chicken", ANNA);
+    assert.equal(caught.status, 200);
+    assert.equal(caught.state.chicken.left, 7);
+
+    const word = await cipherWord(new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Kyiv" }).format(new Date(g.now)), "s");
+    const wrong = await g.call("cipher", ANNA, { word: "НЕВГАДАВ" });
+    assert.equal(wrong.error, "wrong");
+    assert.equal(wrong.state.cipher.triesLeft, 4, "неправильна спроба зберігається");
+    const right = await g.call("cipher", ANNA, { word });
+    assert.equal(right.status, 200);
+    assert.equal(right.state.coins, caught.state.coins + 3000);
+    assert.equal((await g.call("cipher", ANNA, { word })).error, "done");
   });
 
   it("видалення прогресу стирає гравця, а в його друзів — посилання на нього", async () => {

@@ -5,7 +5,8 @@
 const MUTABLE = [
   "name", "username", "photo", "premium", "coins", "earned", "tap_lvl", "energy_lvl", "regen_lvl", "passive_lvl",
   "energy", "energy_at", "passive_at", "tap_at", "referrer", "ref_reward", "invited", "ref_bonus",
-  "daily_day", "channel_done", "friends3_done",
+  "daily_day", "channel_done", "friends3_done", "streak", "streak_day", "chicken_at", "chicken_day", "chicken_count",
+  "cipher_day", "cipher_tries", "cipher_tries_day",
 ];
 const ALL = ["id", ...MUTABLE, "created_at", "version"];
 
@@ -30,9 +31,13 @@ export function d1Players(DB) {
       `UPDATE players SET coins = coins + ?2, earned = earned + ?2, invited = invited + 1, ref_bonus = ref_bonus + ?2,
        version = version + 1 WHERE id = ?1`,
     ).bind(id, amount).run(),
-    friends: async (id) => (await DB.prepare(
-      `SELECT name, photo, premium, ref_reward, created_at FROM players WHERE referrer = ?1 ORDER BY created_at DESC LIMIT 50`,
-    ).bind(id).all()).results,
+    // Рейтинг друзів: сам гравець, той, хто його запросив, і ті, кого запросив він, — за заробленим.
+    friends: async (id, referrer) => (await DB.prepare(
+      `SELECT id, name, photo, premium, earned, referrer, ref_reward FROM players
+       WHERE referrer = ?1 OR id = ?1 OR id = ?2 ORDER BY earned DESC LIMIT 100`,
+    ).bind(id, referrer ?? -1).all()).results,
+    wasInvited: async (id) => Boolean(await DB.prepare(`SELECT 1 FROM invite_used WHERE id = ?1`).bind(id).first()),
+    markInvited: (id) => DB.prepare(`INSERT OR IGNORE INTO invite_used (id) VALUES (?1)`).bind(id).run(),
     remove: (id) => DB.batch([
       DB.prepare(`DELETE FROM players WHERE id = ?1`).bind(id),
       DB.prepare(`UPDATE players SET referrer = NULL WHERE referrer = ?1`).bind(id),
@@ -43,7 +48,7 @@ export function d1Players(DB) {
 export function memoryPlayers() {
   const rows = new Map();
   const copy = (p) => (p ? { ...p } : null);
-  return {
+  const memory = {
     rows,
     get: async (id) => copy(rows.get(id)),
     async insert(p) {
@@ -61,11 +66,16 @@ export function memoryPlayers() {
       const row = rows.get(id);
       if (row) Object.assign(row, { coins: row.coins + amount, earned: row.earned + amount, invited: row.invited + 1, ref_bonus: row.ref_bonus + amount, version: row.version + 1 });
     },
-    friends: async (id) => [...rows.values()].filter((r) => r.referrer === id).sort((a, b) => b.created_at - a.created_at)
-      .map(({ name, photo, premium, ref_reward, created_at }) => ({ name, photo, premium, ref_reward, created_at })),
+    invitedOnce: new Set(),
+    friends: async (id, referrer) => [...rows.values()].filter((r) => r.referrer === id || r.id === id || r.id === referrer)
+      .sort((a, b) => b.earned - a.earned)
+      .map(({ id, name, photo, premium, earned, referrer, ref_reward }) => ({ id, name, photo, premium, earned, referrer, ref_reward })),
+    wasInvited: async (id) => memory.invitedOnce.has(id),
+    markInvited: async (id) => memory.invitedOnce.add(id),
     async remove(id) {
       rows.delete(id);
       for (const r of rows.values()) if (r.referrer === id) r.referrer = null;
     },
   };
+  return memory;
 }

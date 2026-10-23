@@ -14,6 +14,8 @@ import { QR_MAX_BYTES, makeQr } from "./qr.js";
 import { convertText, parseConversion } from "./currency.js";
 import { hasCyrillic, transliterate } from "./translit.js";
 import { esc, formatSize, t } from "./texts.js";
+import { cipherWord } from "./game/cipher.js";
+import { kyivDay } from "./game/rules.js";
 
 const HTML = { parse_mode: "HTML", link_preview_options: { is_disabled: true } };
 const MEMBER = new Set(["creator", "administrator", "member"]);
@@ -25,14 +27,19 @@ const STICKER_EMOJI = "🙂"; // Telegram вимагає емодзі для к�
 const MOSAIC_EMOJI = "🧩"; // так клітинки мозаїки виглядають там, де власні емодзі не показуються
 
 export const COMMANDS = [{ command: "start", description: "Що вміє бот" }];
-export const OWNER_COMMANDS = [...COMMANDS, { command: "stats", description: "Статистика (бачиш лише ти)" }];
+export const OWNER_COMMANDS = [
+  ...COMMANDS,
+  { command: "stats", description: "Статистика (бачиш лише ти)" },
+  { command: "cipher", description: "Шифр дня в грі (бачиш лише ти)" },
+];
 
 // channel — «@username» каналу для обов'язкової підписки; images — Cloudflare Images (env.IMAGES);
 // albums — тимчасове сховище фото з альбомів (albums.js); albumWait — скільки чекати решту фото альбому, мс;
 // stats — знеособлена статистика (stats.js); ownerId — Telegram id власника, лише йому доступна /stats;
-// appUrl — адреса Mini App (гра Ara Farm) для кнопки «Грати» в привітанні.
+// appUrl — адреса Mini App (гра Ara Farm) для кнопки «Грати» в привітанні; cipherSecret — секрет шифру дня гри.
 export function createBot(token, {
-  channel, images, albums = null, stats = null, ownerId = null, appUrl = null, albumWait = 2000, fetch = globalThis.fetch, ...config
+  channel, images, albums = null, stats = null, ownerId = null, appUrl = null, cipherSecret = null, albumWait = 2000,
+  fetch = globalThis.fetch, ...config
 }) {
   const bot = new Bot(token, config);
   bot.api.config.use(autoRetry());
@@ -526,6 +533,12 @@ export function createBot(token, {
       console.error("Статистика:", err.message);
       await send(ctx.chat.id, t.statsFailed);
     }
+  });
+
+  // Шифр дня гри — лише власнику (на випадок, якщо пост у каналі не вийшов).
+  bot.command("cipher", async (ctx, next) => {
+    if (!cipherSecret || !ownerId || ctx.from?.id !== ownerId) return next();
+    await send(ctx.chat.id, t.cipherToday(await cipherWord(kyivDay(Date.now()), cipherSecret)));
   });
 
   bot.chatType("private").on("message", async (ctx) => {

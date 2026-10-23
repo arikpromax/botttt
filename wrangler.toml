@@ -29,5 +29,9 @@ OWNER_ID = "677078927"   # Telegram id власника: лише йому ві�
 BOT_USERNAME = "arawebsite_bot"  # для посилань-запрошень у грі
 APP_URL = "https://msgsaver.msgsaver.workers.dev/"  # Mini App (Main App у BotFather) — кнопка «Грати»
 
+# Шифр дня гри Ara Farm — пост у каналі щодня о 08:00 UTC (10:00 за Києвом взимку, 11:00 — влітку).
+[triggers]
+crons = ["0 8 * * *"]
+
 [observability]
 enabled = true
