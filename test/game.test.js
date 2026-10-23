@@ -347,3 +347,57 @@ describe("гра: бусти й досягнення", () => {
     assert.equal((await g.call("achievement", ANNA, { id: "tap1k" })).error, "not_yet");
   });
 });
+
+describe("гра: більше завдань", () => {
+  it("щоденні: 1000 тапів, курка, буст — лише коли виконано, і щодня заново", async () => {
+    const { claimTask, publicState, useBoost } = await import("../src/game/rules.js");
+    const p = newPlayer(ANNA, T0);
+    assert.equal(claimTask(p, "taps", T0), "not_enough");
+    p.taps_day = "2026-10-23";
+    p.taps_today = 1000;
+    assert.equal(claimTask(p, "taps", T0), null);
+    assert.equal(claimTask(p, "taps", T0), "done");
+    assert.equal(claimTask(p, "chicken", T0 + 16 * 60_000), "not_enough");
+    claimChicken(p, T0 + 16 * 60_000);
+    assert.equal(claimTask(p, "chicken", T0 + 17 * 60_000), null);
+    p.energy = 1;
+    useBoost(p, "energy", T0 + 18 * 60_000);
+    assert.equal(claimTask(p, "boost", T0 + 18 * 60_000), null);
+    const tomorrow = publicState(p, T0 + 24 * 3600_000).tasks;
+    assert.deepEqual([tomorrow.taps.done, tomorrow.taps.progress, tomorrow.chicken.done, tomorrow.boost.done], [false, 0, false, false]);
+  });
+
+  it("завдання з ботом: зараховується, коли бот позначив функцію; будь-яка дія з фото підходить", async () => {
+    const g = game();
+    await g.call("me", ANNA);
+    assert.equal((await g.call("task", ANNA, { id: "qr" })).error, "not_enough");
+    await g.store.markBotUse(501, "qr");
+    await g.store.markBotUse(501, "sticker");
+    await g.store.markBotUse(501, "qr"); // повторно — без дубля
+    assert.equal(g.store.rows.get(501).bot_used, "qr,sticker");
+    assert.equal((await g.call("task", ANNA, { id: "qr" })).status, 200);
+    const photo = await g.call("task", ANNA, { id: "photo" });
+    assert.equal(photo.state.tasks.photo.done, true);
+    assert.equal((await g.call("task", ANNA, { id: "tiktok" })).error, "not_enough");
+    assert.equal((await g.call("task", ANNA, { id: "qr" })).error, "done", "одноразове — лише раз");
+  });
+
+  it("головний екран — раз; завдання «сайт» немає; невідоме завдання — відмова", async () => {
+    const g = game();
+    await g.call("me", ANNA);
+    assert.equal((await g.call("task", ANNA, { id: "home" })).status, 200);
+    assert.equal((await g.call("task", ANNA, { id: "home" })).error, "done");
+    assert.equal((await g.call("task", ANNA, { id: "site" })).error, "unknown");
+    assert.equal((await g.call("task", ANNA, { id: "toString" })).error, "unknown");
+  });
+});
+
+describe("бот позначає функції для завдань гри", () => {
+  it("після QR-коду бот повідомляє гру про функцію qr", async () => {
+    const { harness } = await import("./harness.js");
+    const marks = [];
+    const h = harness({ onFeature: async (id, feature) => marks.push([id, feature]) });
+    await h.press("qr", h.newMessage({ text: "Привіт" }));
+    assert.deepEqual(marks, [[111, "qr"]]);
+  });
+});

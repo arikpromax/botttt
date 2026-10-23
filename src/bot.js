@@ -36,10 +36,11 @@ export const OWNER_COMMANDS = [
 // channel — «@username» каналу для обов'язкової підписки; images — Cloudflare Images (env.IMAGES);
 // albums — тимчасове сховище фото з альбомів (albums.js); albumWait — скільки чекати решту фото альбому, мс;
 // stats — знеособлена статистика (stats.js); ownerId — Telegram id власника, лише йому доступна /stats;
-// appUrl — адреса Mini App (гра Ara Farm) для кнопки «Грати» в привітанні; cipherSecret — секрет шифру дня гри.
+// appUrl — адреса Mini App (гра Ara Farm) для кнопки «Грати» в привітанні; cipherSecret — секрет шифру дня гри;
+// onFeature(userId, feature) — позначка для завдань гри («зроби QR-код у боті» тощо).
 export function createBot(token, {
-  channel, images, albums = null, stats = null, ownerId = null, appUrl = null, cipherSecret = null, albumWait = 2000,
-  fetch = globalThis.fetch, ...config
+  channel, images, albums = null, stats = null, ownerId = null, appUrl = null, cipherSecret = null, onFeature = null,
+  albumWait = 2000, fetch = globalThis.fetch, ...config
 }) {
   const bot = new Bot(token, config);
   bot.api.config.use(autoRetry());
@@ -48,13 +49,11 @@ export function createBot(token, {
   const send = (chatId, text, extra) => bot.api.sendMessage(chatId, text, { ...HTML, ...extra });
   const editOrThrow = (msg, text, extra) => bot.api.editMessageText(msg.chat.id, msg.message_id, text, { ...HTML, ...extra });
   const edit = (msg, text, extra) => editOrThrow(msg, text, extra).catch(() => {});
-  // Збій статистики не має заважати самій дії.
+  // Збій статистики чи позначки для гри не має заважати самій дії.
   const track = async (msg, feature) => {
-    try {
-      await stats?.track(msg.from?.id ?? msg.chat.id, feature);
-    } catch (err) {
-      console.error("Статистика:", err.message);
-    }
+    const userId = msg.from?.id ?? msg.chat.id;
+    const results = await Promise.allSettled([stats?.track(userId, feature), onFeature?.(userId, feature)]);
+    for (const r of results) if (r.status === "rejected") console.error("Статистика:", r.reason?.message);
   };
 
   // ---- Обов'язкова підписка ----

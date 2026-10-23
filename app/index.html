@@ -312,6 +312,7 @@
     <path d="M12.1 10.5c.2 1.6 2.4 2.5 2.4 4.9A2.5 2.5 0 0 1 12 18a2.5 2.5 0 0 1-2.5-2.5c0-1.3.7-2.2 1.3-2.7.1.8.5 1.3 1 1.4-.2-1.3.1-2.6.3-3.7z" fill="#fff3b0"/>
   </symbol>
   <symbol id="i-league" viewBox="0 0 24 24"><path d="M12 2.8l7.5 3v5.6c0 4.6-3.2 8-7.5 9.8-4.3-1.8-7.5-5.2-7.5-9.8V5.8z" fill="currentColor" fill-opacity=".22"/><path d="M12 7.5l1.4 2.9 3.1.4-2.3 2.2.6 3.1-2.8-1.5-2.8 1.5.6-3.1-2.3-2.2 3.1-.4z" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 11l8-6.5 8 6.5"/><path d="M6 9.5V20h12V9.5"/><path d="M10 20v-5h4v5"/></symbol>
   <symbol id="i-rocket" viewBox="0 0 24 24"><path d="M14.2 4.6C16.8 3.4 20 3.5 20 3.5s.1 3.2-1.1 5.8l-6.2 6.2-4.4-4.4z"/><path d="M8.6 10.9l-3.3.4-2 2 4.3 1.3M13.1 15.4l-.4 3.3-2 2-1.3-4.3M15.6 8.4h.01M6.2 17.8c-1.2 1.2-1.7 2.9-1.7 2.9s1.7-.5 2.9-1.7"/></symbol>
   <symbol id="i-egg" viewBox="0 0 24 24"><path d="M12 3c3.6 0 6.5 5.6 6.5 10.3A6.4 6.4 0 0 1 12 20.5a6.4 6.4 0 0 1-6.5-7.2C5.5 8.6 8.4 3 12 3z"/></symbol>
   <symbol id="i-crown" viewBox="0 0 24 24"><path d="M4 8l4.2 3.6L12 5l3.8 6.6L20 8l-1.8 10H5.8z"/><path d="M6 21h12"/></symbol>
@@ -853,32 +854,58 @@
   }
 
   // ---- Завдання ----
+  // go — куди вести, поки завдання не виконане: [підпис кнопки, дія]. Прогрес і нагороди — із сервера.
+  const toGame = () => showTab("game");
+  const toBot = () => openTg(BOT_LINK);
   const TASKS = [
-    { id: "daily", kind: "daily", icon: "i-gift", tone: "tone-gold", title: "Щоденний вхід", about: "Заходь у гру щодня" },
-    { id: "channel", kind: "once", icon: "i-send", tone: "tone-blue", title: "Підпишись на канал AraWebsite", about: "Новини бота й гри в Telegram" },
-    { id: "friends3", kind: "once", icon: "i-users", tone: "tone-violet", title: "Запроси 3 друзів", about: "Друзі мають зайти в гру за твоїм посиланням" },
+    { id: "daily", icon: "i-gift", tone: "tone-gold", title: "Щоденний вхід", about: () => `День ${S.streak || 1} серії — що довша серія, то більша нагорода` },
+    { id: "taps", icon: "i-hand", tone: "tone-orange", title: "Натапай 1 000 разів", about: "За сьогодні", go: ["Тапати", toGame] },
+    { id: "chicken", icon: "i-egg", tone: "tone-pink", title: "Злови курку", about: "Кілька разів на день вона пролітає над фермою", go: ["До ферми", toGame] },
+    { id: "boost", icon: "i-rocket", tone: "tone-teal", title: "Скористайся бустом", about: "Повна енергія або турбо", go: ["Бусти", () => (toGame(), openBoosts())] },
+    { id: "channel", icon: "i-send", tone: "tone-blue", title: "Підпишись на канал AraWebsite", about: "Новини бота й гри в Telegram" },
+    { id: "friends3", icon: "i-users", tone: "tone-violet", title: "Запроси 3 друзів", about: "Друзі мають зайти в гру за твоїм посиланням", go: ["Запросити", () => showTab("friends")] },
+    { id: "tiktok", icon: "i-tiktok", tone: "tone-pink", title: "Завантаж відео з TikTok у боті", about: "Надішли боту посилання на TikTok", go: ["До бота", toBot] },
+    { id: "photo", icon: "i-photo", tone: "tone-blue", title: "Оброби фото в боті", about: "Стисни, зроби PDF, скан, стікер чи емодзі", go: ["До бота", toBot] },
+    { id: "qr", icon: "i-qr", tone: "tone-violet", title: "Зроби QR-код у боті", about: "Надішли боту будь-який текст чи посилання", go: ["До бота", toBot] },
+    { id: "currency", icon: "i-money", tone: "tone-teal", title: "Дізнайся курс у боті", about: "Напиши боту «курс» або «100 usd»", go: ["До бота", toBot] },
+    { id: "home", icon: "i-home", tone: "tone-orange", title: "Додай гру на головний екран", about: "Щоб відкривати в один дотик" },
   ];
   let taskFilter = "all";
   let channelOpened = false;
+  // Додати на головний екран уміє лише свіжий Telegram на телефоні.
+  const homeSupported = () => inTelegram && Boolean(tg.addToHomeScreen) && tg.isVersionAtLeast?.("8.0");
+  let homeAdded = false;
 
   const done = `<span class="done-tag">${icon("i-check")}Виконано</span>`;
   const rewardLine = (n) => `<div class="meta" style="display:flex;align-items:center;gap:5px;color:var(--text);font-weight:700">${coin("coin-ic")}+${fmt(n)}</div>`;
+  const btn = (attr, label) => `<button class="small-btn" ${attr}>${label}</button>`;
+
+  function taskAction(t, s) {
+    if (s.done) return done;
+    if (t.id === "channel") return btn(`data-task="channel"`, channelOpened ? "Перевірити" : "Перейти");
+    if (t.id === "home") return homeAdded ? btn(`data-task="home"`, "Отримати") : btn(`data-task="home-add"`, "Додати");
+    if (s.goal && s.progress < s.goal) return btn(`data-go="${t.id}"`, t.go[0]);
+    return btn(`data-task="${t.id}"`, "Отримати");
+  }
+  const claimable = (s) => !s.done && (s.goal ? s.progress >= s.goal : false);
 
   function renderTasks() {
     const typed = $("cipher-word")?.value ?? ""; // не губимо введене слово, якщо список перемальовується
-    const cards = TASKS.filter((t) => taskFilter === "all" || t.kind === taskFilter).map((t) => {
+    const shown = TASKS.filter((t) => S.tasks[t.id] && (t.id !== "home" || homeSupported()))
+      .filter((t) => taskFilter === "all" || S.tasks[t.id].kind === taskFilter);
+    const cards = shown.map((t) => {
       const s = S.tasks[t.id];
-      let action;
-      if (s.done) action = done;
-      else if (t.id === "channel") action = `<button class="small-btn" data-task="channel">${channelOpened ? "Перевірити" : "Перейти"}</button>`;
-      else if (t.id === "friends3" && s.progress < s.target) action = `<button class="small-btn" data-task="invite">Запросити</button>`;
-      else action = `<button class="small-btn" data-task="${t.id}">Отримати</button>`;
-      const progress = t.id === "friends3" && !s.done
-        ? `<div class="progress"><span class="bar"><i style="width:${(s.progress / s.target) * 100}%"></i></span>${s.progress}/${s.target}</div>` : "";
-      const about = t.id === "daily" ? `День ${S.streak || 1} серії — що довша серія, то більша нагорода` : t.about;
+      const progress = s.goal > 1 && !s.done
+        ? `<div class="progress"><span class="bar"><i style="width:${(s.progress / s.goal) * 100}%"></i></span>${fmt(s.progress)}/${fmt(s.goal)}</div>` : "";
+      const about = typeof t.about === "function" ? t.about() : t.about;
       return `<div class="card row"><span class="tile ${t.tone}">${icon(t.icon)}</span>
-        <span class="grow"><b>${t.title}</b><div class="meta">${about}</div>${rewardLine(s.reward)}${progress}</span>${action}</div>`;
+        <span class="grow"><b>${t.title}</b><div class="meta">${about}</div>${rewardLine(s.reward)}${progress}</span>${taskAction(t, s)}</div>`;
     });
+    // Червона крапка на вкладці, коли є що забрати.
+    const ready = Object.values(S.tasks).some(claimable) || !S.tasks.daily.done;
+    const tasksTab = document.querySelector("[data-tab=tasks]");
+    tasksTab.querySelector(".dot")?.remove();
+    if (ready) tasksTab.insertAdjacentHTML("beforeend", `<span class="dot"></span>`);
     if (taskFilter !== "once") {
       const c = S.cipher;
       const form = c.done ? "" : c.triesLeft > 0
@@ -921,15 +948,20 @@
   });
 
   $("tasks").addEventListener("click", async (e) => {
+    const go = e.target.closest("[data-go]")?.dataset.go;
+    if (go) return haptic("select"), TASKS.find((t) => t.id === go).go[1]();
     const id = e.target.closest("[data-task]")?.dataset.task;
     if (!id) return;
-    if (id === "invite") return showTab("friends");
     if (id === "open-channel") return openTg(CHANNEL_LINK);
     if (id === "cipher") return checkCipher(e.target);
     if (id === "channel" && !channelOpened) {
       channelOpened = true;
       openTg(CHANNEL_LINK);
       setTimeout(renderTasks, 600);
+      return;
+    }
+    if (id === "home-add") {
+      tg.addToHomeScreen();
       return;
     }
     e.target.disabled = true;
@@ -941,11 +973,19 @@
       toast(`+${fmt(S.tasks[id].reward)} монет`);
     } else {
       haptic("error");
-      const why = { not_member: "Підписки поки не видно — підпишись і натисни ще раз", not_enough: "Поки замало друзів", done: "Уже виконано" };
+      const why = {
+        not_member: "Підписки поки не видно — підпишись і натисни ще раз",
+        not_enough: "Ще не виконано", done: "Уже виконано",
+      };
       toast(why[res?.error] ?? "Не вдалося — спробуй ще раз");
       renderTasks();
     }
   });
+  // Гру додали на головний екран (або вона вже там) — можна забрати нагороду.
+  if (homeSupported()) {
+    tg.onEvent("homeScreenAdded", () => ((homeAdded = true), S && renderTasks()));
+    tg.checkHomeScreenStatus?.((status) => status === "added" && ((homeAdded = true), S && renderTasks()));
+  }
 
   // ---- Друзі ----
   function renderFriendsHeader() {
@@ -1294,7 +1334,11 @@
       upgrades: { tap: { level: 1, value: 1, next: 2, cost: 10000 }, energy: { level: 1, value: 500, next: 1000, cost: 15000 },
         regen: { level: 1, value: 1, next: 1.5, cost: 30000 }, passive: { level: 1, value: 50, next: 300, cost: 20000 } },
       streak: 3, streakRewards: [500, 1000, 1500, 2500, 3500, 5000, 7500],
-      tasks: { daily: { reward: 1500, done: false }, channel: { reward: 1000, done: false }, friends3: { reward: 2500, done: false, progress: 1, target: 3 } },
+      tasks: Object.fromEntries([
+        ["daily", "daily", 1500, 0, 0], ["taps", "daily", 1000, 640, 1000], ["chicken", "daily", 700, 0, 1], ["boost", "daily", 300, 0, 1],
+        ["channel", "once", 1000, 0, 0], ["friends3", "once", 2500, 1, 3], ["tiktok", "once", 1000, 1, 1], ["photo", "once", 700, 1, 1],
+        ["qr", "once", 500, 0, 1], ["currency", "once", 300, 0, 1], ["home", "once", 500, 0, 0],
+      ].map(([id, kind, reward, progress, goal]) => [id, { kind, reward, progress, goal, done: id === "photo", opened: false }])),
       cipher: { reward: 3000, done: false, triesLeft: 5 }, chicken: { reward: 300, readyAt: now, left: 8 },
       boosts: { energy: { perDay: 3, readyAt: now, left: 3 }, turbo: { perDay: 2, seconds: 20, multiplier: 5, until: 0, left: 2 } },
       achievements: [
@@ -1362,7 +1406,7 @@
     }
     if (path === "task") {
       const t = d.tasks[body.id];
-      if (body.id === "friends3" && t.progress < t.target) return out({ error: "not_enough" }, 409);
+      if (t.goal && t.progress < t.goal) return out({ error: "not_enough" }, 409);
       t.done = true;
       d.coins += t.reward;
       d.earned += t.reward;

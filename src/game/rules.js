@@ -104,6 +104,7 @@ export function newPlayer(user, now) {
     chicken_at: now, chicken_day: null, chicken_count: 0,
     cipher_day: null, cipher_tries: 0, cipher_tries_day: null,
     total_taps: 0, best_streak: 0, chickens_total: 0, ciphers_total: 0, achievements: "",
+    taps_day: null, taps_today: 0, daily_tasks: "", tasks_done: "", bot_used: "", site_open_at: 0,
     boost_energy_day: null, boost_energy_count: 0, boost_energy_at: 0,
     turbo_day: null, turbo_count: 0, turbo_until: 0,
     created_at: now, version: 0,
@@ -167,6 +168,9 @@ export function applyTaps(p, taps, now, turboTaps = 0) {
   p.energy -= normal;
   p.tap_at = from + ((normal + turbo) / TAPS_PER_SECOND) * 1000; // використаний час «відра»
   p.total_taps += normal + turbo;
+  const today = kyivDay(now);
+  if (p.taps_day !== today) Object.assign(p, { taps_day: today, taps_today: 0 });
+  p.taps_today += normal + turbo;
   give(p, (normal + turbo * BOOSTS.turbo.multiplier) * value("tap", p.tap_lvl));
   return normal + turbo;
 }
@@ -236,33 +240,74 @@ export function buyUpgrade(p, kind, now) {
 }
 
 // ---- Завдання ----
-export const TASKS = ["daily", "channel", "friends3"];
+// kind: daily — щодня заново, once — раз назавжди. goal — скільки треба (прогрес рахує taskProgress).
+// bot — функції бота-конвертера, будь-якою з яких можна виконати завдання (бот позначає це сам).
+export const TASKS = {
+  daily: { kind: "daily" }, // нагорода — за серією днів (вогник)
+  taps: { kind: "daily", reward: 1000, goal: 1000 }, // натапати 1000 разів за день
+  chicken: { kind: "daily", reward: 700, goal: 1 }, // зловити курку
+  boost: { kind: "daily", reward: 300, goal: 1 }, // скористатися бустом
+  channel: { kind: "once", reward: REWARDS.channel },
+  friends3: { kind: "once", reward: REWARDS.friends3, goal: FRIENDS_TARGET },
+  tiktok: { kind: "once", reward: 1000, goal: 1, bot: ["tiktok"] },
+  photo: { kind: "once", reward: 700, goal: 1, bot: ["compress", "pdf", "album", "scan", "jpg", "sticker", "emoji", "mosaic"] },
+  qr: { kind: "once", reward: 500, goal: 1, bot: ["qr"] },
+  currency: { kind: "once", reward: 300, goal: 1, bot: ["currency"] },
+  home: { kind: "once", reward: 500 }, // додати гру на головний екран (Telegram не дає це перевірити — віримо)
+};
+
+const list = (s) => (s ? s.split(",") : []);
+const dailyDone = (p, id, today) => (p.daily_tasks ?? "").startsWith(`${today}:`) && list(p.daily_tasks.slice(11)).includes(id);
+const onceDone = (p, id) => list(p.tasks_done).includes(id);
+const usedInBot = (p, features) => list(p.bot_used).some((f) => features.includes(f));
+
+function taskDone(p, id, today) {
+  if (id === "daily") return p.daily_day === today;
+  if (id === "channel") return Boolean(p.channel_done);
+  if (id === "friends3") return Boolean(p.friends3_done);
+  return TASKS[id].kind === "daily" ? dailyDone(p, id, today) : onceDone(p, id);
+}
+
+function taskProgress(p, id, today, now) {
+  if (id === "taps") return p.taps_day === today ? p.taps_today : 0;
+  if (id === "chicken") return p.chicken_day === today ? p.chicken_count : 0;
+  if (id === "boost") return (p.boost_energy_day === today ? p.boost_energy_count : 0) + (p.turbo_day === today ? p.turbo_count : 0);
+  if (id === "friends3") return p.invited;
+  if (TASKS[id].bot) return usedInBot(p, TASKS[id].bot) ? 1 : 0;
+  return 0;
+}
 
 // → null, якщо нагороду видано, або причина: "done" | "not_member" | "not_enough" | "unknown".
 // channelMember — підписаний на канал (перевіряє сервер у Telegram).
 export function claimTask(p, id, now, { channelMember = false } = {}) {
+  const task = Object.hasOwn(TASKS, id) ? TASKS[id] : null;
+  if (!task) return "unknown";
   settle(p, now);
-  if (id === "daily") {
-    if (p.daily_day === kyivDay(now)) return "done";
-    p.daily_day = kyivDay(now);
-    give(p, dailyReward(p.streak));
-    return null;
-  }
-  if (id === "channel") {
-    if (p.channel_done) return "done";
-    if (!channelMember) return "not_member";
-    p.channel_done = 1;
-    give(p, REWARDS.channel);
-    return null;
-  }
-  if (id === "friends3") {
-    if (p.friends3_done) return "done";
-    if (p.invited < FRIENDS_TARGET) return "not_enough";
-    p.friends3_done = 1;
-    give(p, REWARDS.friends3);
-    return null;
-  }
-  return "unknown";
+  const today = kyivDay(now);
+  if (taskDone(p, id, today)) return "done";
+  if (id === "channel" && !channelMember) return "not_member";
+  if (task.goal && taskProgress(p, id, today, now) < task.goal) return "not_enough";
+
+  if (id === "daily") p.daily_day = today;
+  else if (id === "channel") p.channel_done = 1;
+  else if (id === "friends3") p.friends3_done = 1;
+  else if (task.kind === "daily") {
+    // «РРРР-ММ-ДД:taps,chicken» — список лише за сьогодні; новий день — новий список.
+    p.daily_tasks = (p.daily_tasks ?? "").startsWith(`${today}:`) ? `${p.daily_tasks},${id}` : `${today}:${id}`;
+  } else p.tasks_done = [...list(p.tasks_done), id].join(",");
+  give(p, id === "daily" ? dailyReward(p.streak) : task.reward);
+  return null;
+}
+
+// Стан завдань для клієнта.
+function tasksState(p, now) {
+  const today = kyivDay(now);
+  return Object.fromEntries(Object.entries(TASKS).map(([id, t]) => {
+    const done = taskDone(p, id, today);
+    const progress = t.goal ? Math.min(taskProgress(p, id, today, now), t.goal) : 0;
+    const reward = id === "daily" ? dailyReward(p.streak_day === today ? p.streak : 1) : t.reward;
+    return [id, { kind: t.kind, reward, done, progress, goal: t.goal ?? 0 }];
+  }));
 }
 
 // Курка: → null або "early" | "limit".
@@ -333,11 +378,7 @@ export function publicState(p, now) {
     upgrades: { tap: upgrade("tap"), energy: upgrade("energy"), regen: upgrade("regen"), passive: upgrade("passive") },
     streak: p.streak_day === today || p.streak_day === shiftDay(today, -1) ? p.streak : 0,
     streakRewards: STREAK_REWARDS,
-    tasks: {
-      daily: { reward: dailyReward(p.streak_day === today ? p.streak : 1), done: p.daily_day === today },
-      channel: { reward: REWARDS.channel, done: Boolean(p.channel_done) },
-      friends3: { reward: REWARDS.friends3, done: Boolean(p.friends3_done), progress: Math.min(p.invited, FRIENDS_TARGET), target: FRIENDS_TARGET },
-    },
+    tasks: tasksState(p, now),
     cipher: {
       reward: CIPHER.reward, done: p.cipher_day === today,
       triesLeft: CIPHER.tries - (p.cipher_tries_day === today ? p.cipher_tries : 0),

@@ -8,6 +8,7 @@ const MUTABLE = [
   "daily_day", "channel_done", "friends3_done", "streak", "streak_day", "chicken_at", "chicken_day", "chicken_count",
   "cipher_day", "cipher_tries", "cipher_tries_day", "total_taps", "best_streak", "chickens_total", "ciphers_total",
   "achievements", "boost_energy_day", "boost_energy_count", "boost_energy_at", "turbo_day", "turbo_count", "turbo_until",
+  "taps_day", "taps_today", "daily_tasks", "tasks_done", "bot_used", "site_open_at",
 ];
 const ALL = ["id", ...MUTABLE, "created_at", "version"];
 
@@ -37,6 +38,11 @@ export function d1Players(DB) {
       `SELECT id, name, photo, premium, earned, referrer, ref_reward FROM players
        WHERE referrer = ?1 OR id = ?1 OR id = ?2 ORDER BY earned DESC LIMIT 100`,
     ).bind(id, referrer ?? -1).all()).results,
+    // Бот-конвертер позначає функцію, якою скористався гравець (для завдань гри). Немає гравця — нічого не робимо.
+    markBotUse: (id, feature) => DB.prepare(
+      `UPDATE players SET bot_used = trim(bot_used || ',' || ?2, ','), version = version + 1
+       WHERE id = ?1 AND instr(',' || bot_used || ',', ',' || ?2 || ',') = 0`,
+    ).bind(id, feature).run(),
     wasInvited: async (id) => Boolean(await DB.prepare(`SELECT 1 FROM invite_used WHERE id = ?1`).bind(id).first()),
     markInvited: (id) => DB.prepare(`INSERT OR IGNORE INTO invite_used (id) VALUES (?1)`).bind(id).run(),
     remove: (id) => DB.batch([
@@ -71,6 +77,12 @@ export function memoryPlayers() {
     friends: async (id, referrer) => [...rows.values()].filter((r) => r.referrer === id || r.id === id || r.id === referrer)
       .sort((a, b) => b.earned - a.earned)
       .map(({ id, name, photo, premium, earned, referrer, ref_reward }) => ({ id, name, photo, premium, earned, referrer, ref_reward })),
+    async markBotUse(id, feature) {
+      const row = rows.get(id);
+      if (row && !row.bot_used.split(",").includes(feature)) {
+        Object.assign(row, { bot_used: row.bot_used ? `${row.bot_used},${feature}` : feature, version: row.version + 1 });
+      }
+    },
     wasInvited: async (id) => memory.invitedOnce.has(id),
     markInvited: async (id) => memory.invitedOnce.add(id),
     async remove(id) {

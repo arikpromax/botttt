@@ -74,7 +74,7 @@ export function fakeMp4({ audioKbps = 0 } = {}) {
 // fileBytes — що віддає Telegram, коли бот завантажує файл користувача: розмір (нулі) або самі байти.
 export function harness({
   channel = "@chan", tiktok, page, files = {}, images = fakeImages(), fileBytes = 4 * MB,
-  albums = memoryAlbums(), albumWait = 30, stats = memoryStats(), ownerId = null, appUrl = null,
+  albums = memoryAlbums(), albumWait = 30, stats = memoryStats(), ownerId = null, appUrl = null, onFeature = null,
 } = {}) {
   const tg = { member: "member", calls: [], rejectUrl: false, nextId: 100, stickerSets: new Map() };
   const fetches = [];
@@ -92,7 +92,7 @@ export function harness({
     return new Response("not found", { status: 404 });
   };
 
-  const bot = createBot("123:TEST", { channel, images, albums, albumWait, stats, ownerId, appUrl, fetch: fakeFetch, botInfo: BOT_INFO });
+  const bot = createBot("123:TEST", { channel, images, albums, albumWait, stats, ownerId, appUrl, onFeature, fetch: fakeFetch, botInfo: BOT_INFO });
   bot.api.config.use(async (prev, method, payload) => {
     tg.calls.push({ method, payload });
     const ok = (result) => ({ ok: true, result });

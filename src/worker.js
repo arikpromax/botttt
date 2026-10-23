@@ -41,6 +41,8 @@ function setup(env) {
       ownerId: Number(env.OWNER_ID) || null,
       appUrl: env.APP_URL || null,
       cipherSecret: env.WEBHOOK_SECRET,
+      // Завдання гри «зроби щось у боті»: позначаємо функцію в прогресі гравця (якщо він грає).
+      onFeature: env.DB ? (userId, feature) => d1Players(env.DB).markBotUse(userId, feature) : null,
     });
     await bot.init();
     return bot;
