@@ -50,14 +50,18 @@ describe("гра: вхід через Telegram", () => {
 });
 
 describe("гра: правила", () => {
-  it("енергія відновлюється до максимуму, тапи — не більше енергії й не швидше за людину", () => {
+  it("тапи — не більше енергії й не швидше, ніж одним пальцем (12 за секунду)", () => {
     const p = newPlayer(ANNA, T0);
-    assert.equal(applyTaps(p, 10_000, T0 + 1000), 60, "за 1 с — не більше 20 тапів + запас 40");
-    assert.equal(p.coins, 60);
+    assert.equal(applyTaps(p, 10_000, T0 + 1000), 12, "за 1 с — не більше 12");
+    assert.equal(p.coins, 12);
+    assert.equal(applyTaps(p, 30, T0 + 4000), 30, "чесні 30 тапів за 3 с — усі");
     const later = T0 + 600_000;
-    assert.equal(applyTaps(p, 10_000, later), 500, "за 10 хв енергія знову повна — 500");
-    assert.equal(applyTaps(p, 5, later + 1), 0, "енергії немає");
-    settle(p, later + 100_000);
+    assert.equal(applyTaps(p, 10_000, later), 60, "після довгої паузи — не більше ніж за 5 с");
+    settle(p, later);
+    assert.equal(Math.floor(p.energy), 440);
+    p.energy = 3;
+    assert.equal(applyTaps(p, 30, later + 1000), 4, "енергії лише на 4 тапи (3 + 1 відновилась за секунду)");
+    settle(p, later + 101_000);
     assert.equal(Math.floor(p.energy), 100, "1 енергія за секунду");
   });
 
@@ -75,7 +79,8 @@ describe("гра: правила", () => {
     assert.equal(levelOf(1e9).to, null);
   });
 
-  it("ціни покращень ростуть, рівнів — 10", () => {
+  it("ціни покращень: перший рівень — 10 000 / 15 000 / 30 000 / 20 000, далі ростуть; рівнів — 10", () => {
+    assert.deepEqual([UPGRADES.tap, UPGRADES.energy, UPGRADES.regen, UPGRADES.passive].map((u) => u.costs[0]), [10_000, 15_000, 30_000, 20_000]);
     for (const { values, costs } of Object.values(UPGRADES)) {
       assert.equal(values.length, 10);
       assert.equal(costs.length, 9);
@@ -93,12 +98,12 @@ describe("гра: API", () => {
     assert.equal(me.state.energyMax, 500);
     assert.equal(me.refLink, "https://t.me/test_bot?startapp=ref_501");
     g.wait(3000);
-    const tap = await g.call("tap", ANNA, { taps: 50 });
-    assert.equal(tap.accepted, 50);
-    assert.equal(tap.state.coins, 50);
+    const tap = await g.call("tap", ANNA, { taps: 30 });
+    assert.equal(tap.accepted, 30);
+    assert.equal(tap.state.coins, 30);
     g.wait(1000);
     const cheat = await g.call("tap", ANNA, { taps: 100_000 });
-    assert.equal(cheat.accepted, 60, "автоклікер не пройде");
+    assert.equal(cheat.accepted, 18, "автоклікер не пройде: лише 1,5 с невикористаного часу × 12");
   });
 
   it("покращення: купує, коли вистачає монет, інакше — 409 і нічого не змінює", async () => {
@@ -108,11 +113,12 @@ describe("гра: API", () => {
     const poor = await g.call("upgrade", ANNA, { kind: "tap" });
     assert.equal(poor.status, 409);
     assert.equal(poor.error, "coins");
-    g.store.rows.get(501).coins = 1000;
+    g.store.rows.get(501).coins = 25_000;
     const bought = await g.call("upgrade", ANNA, { kind: "tap" });
     assert.equal(bought.status, 200);
     assert.equal(bought.state.perTap, 2);
-    assert.equal(bought.state.coins, 1000 - UPGRADES.tap.costs[0]);
+    assert.equal(bought.state.coins, 15_000);
+    assert.equal(bought.state.upgrades.tap.cost, 22_000, "наступний рівень дорожчий");
   });
 
   it("запрошення: другу — вітальні 500, тому, хто запросив, — 1000 (за друга з Premium — 2500)", async () => {

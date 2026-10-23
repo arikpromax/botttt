@@ -6,10 +6,10 @@ const HOUR = 3600_000;
 // Покращення: значення на рівнях 1…10 і ціна переходу з рівня N на N+1 (costs[N-1]).
 const prices = (base) => Array.from({ length: 9 }, (_, i) => Math.round((base * 2.2 ** i) / 10) * 10);
 export const UPGRADES = {
-  tap: { values: [1, 2, 3, 4, 5, 6, 8, 10, 12, 15], costs: prices(200) }, // монет за тап
-  energy: { values: [500, 750, 1000, 1250, 1500, 2000, 2500, 3000, 4000, 5000], costs: prices(300) }, // максимум енергії
-  regen: { values: [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10], costs: prices(400) }, // енергії за секунду
-  passive: { values: [10, 25, 50, 100, 200, 400, 700, 1200, 2000, 3500], costs: prices(500) }, // монет за годину
+  tap: { values: [1, 2, 3, 4, 5, 6, 8, 10, 12, 15], costs: prices(10_000) }, // монет за тап
+  energy: { values: [500, 750, 1000, 1250, 1500, 2000, 2500, 3000, 4000, 5000], costs: prices(15_000) }, // максимум енергії
+  regen: { values: [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10], costs: prices(30_000) }, // енергії за секунду
+  passive: { values: [10, 25, 50, 100, 200, 400, 700, 1200, 2000, 3500], costs: prices(20_000) }, // монет за годину
 };
 export const MAX_LEVEL = 10;
 export const PASSIVE_CAP_HOURS = 8; // поки гравця немає, ферма заробляє не довше 8 годин
@@ -27,9 +27,11 @@ export const REWARDS = {
 };
 export const FRIENDS_TARGET = 3;
 
-// Захист від автоклікерів: людина не тапає швидше за ~20 разів на секунду.
-const TAPS_PER_SECOND = 20;
-const TAP_BURST = 40;
+// Тапати можна одним пальцем: не швидше за 12 разів на секунду (клієнт пускає трохи повільніше).
+// «Відро» тапів: невикористаний час накопичується не більше ніж за 5 секунд — щоб не можна було
+// довго чекати, а потім надіслати тисячу тапів разом.
+export const TAPS_PER_SECOND = 12;
+const TAP_WINDOW_MS = 5000;
 const MAX_TAPS_PER_SYNC = 2000;
 
 export const value = (kind, level) => UPGRADES[kind].values[level - 1];
@@ -79,13 +81,14 @@ export function settle(p, now) {
   return gain;
 }
 
-// Тапи від клієнта: не більше, ніж є енергії, і не швидше, ніж може людина. → скільки зараховано.
+// Тапи від клієнта: не більше, ніж є енергії, і не швидше, ніж одним пальцем. → скільки зараховано.
 export function applyTaps(p, taps, now) {
   settle(p, now);
-  const byTime = Math.floor((Math.max(0, now - p.tap_at) / 1000) * TAPS_PER_SECOND) + TAP_BURST;
+  const from = Math.max(p.tap_at, now - TAP_WINDOW_MS);
+  const byTime = Math.floor(((now - from) / 1000) * TAPS_PER_SECOND);
   const accepted = Math.max(0, Math.min(Math.floor(taps) || 0, Math.floor(p.energy), byTime, MAX_TAPS_PER_SYNC));
   p.energy -= accepted;
-  p.tap_at = now;
+  p.tap_at = from + (accepted / TAPS_PER_SECOND) * 1000; // використаний час «відра»
   give(p, accepted * value("tap", p.tap_lvl));
   return accepted;
 }

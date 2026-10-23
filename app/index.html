@@ -538,10 +538,22 @@
   }, 250);
 
   // ---- Тапи ----
+  // Лише одним пальцем: другий палець, поки перший на монеті, не рахується; і не частіше, ніж
+  // ~12 разів на секунду (так само рахує сервер).
   const coinEl = $("coin");
+  const MIN_TAP_MS = 85;
+  let finger = null;
+  let lastDown = 0;
+  let lastTap = 0;
   function tap(e) {
     e.preventDefault();
-    if (!S) return;
+    // Якщо «відпускання» пальця загубилось (буває у вебв'ю), через 1,5 с перестаємо чекати на нього.
+    if (finger !== null && e.timeStamp - lastDown > 1500) finger = null;
+    if (!S || !e.isPrimary || finger !== null) return;
+    finger = e.pointerId;
+    lastDown = e.timeStamp;
+    if (e.timeStamp - lastTap < MIN_TAP_MS) return;
+    lastTap = e.timeStamp;
     if (S.energy < 1) {
       haptic("error");
       coinEl.classList.remove("shake");
@@ -571,6 +583,9 @@
     if (pending >= 150) flush();
   }
   coinEl.addEventListener("pointerdown", tap);
+  const release = (e) => e.pointerId === finger && (finger = null);
+  window.addEventListener("pointerup", release);
+  window.addEventListener("pointercancel", release);
   coinEl.addEventListener("contextmenu", (e) => e.preventDefault());
 
   // ---- Відображення ----
@@ -879,10 +894,10 @@
   function demoApi(path, body) {
     const now = Date.now();
     demo ??= {
-      id: 0, name: "Гравець", photo: null, coins: 1250, earned: 1250, level: 2, from: 1000, to: 5000,
+      id: 0, name: "Гравець", photo: null, coins: 12450, earned: 12450, level: 3, from: 5000, to: 20000,
       energy: 430, energyMax: 500, regen: 1, perTap: 1, passive: 10, passiveCapHours: 8, maxLevel: 10, invited: 1, refBonus: 1000,
-      upgrades: { tap: { level: 1, value: 1, next: 2, cost: 200 }, energy: { level: 1, value: 500, next: 750, cost: 300 },
-        regen: { level: 1, value: 1, next: 1.5, cost: 400 }, passive: { level: 1, value: 10, next: 25, cost: 500 } },
+      upgrades: { tap: { level: 1, value: 1, next: 2, cost: 10000 }, energy: { level: 1, value: 500, next: 750, cost: 15000 },
+        regen: { level: 1, value: 1, next: 1.5, cost: 30000 }, passive: { level: 1, value: 10, next: 25, cost: 20000 } },
       tasks: { daily: { reward: 500, done: false }, channel: { reward: 1000, done: false }, friends3: { reward: 2500, done: false, progress: 1, target: 3 } },
       rewards: { friend: 1000, friendPremium: 2500, welcome: 500 }, at: now,
     };
