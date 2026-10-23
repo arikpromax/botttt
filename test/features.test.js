@@ -1,7 +1,7 @@
 // Валюти, транслітерація, стікери, скан документа й статистика для власника.
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { fakeImages, fakeJpeg, harness } from "./harness.js";
+import { USER, fakeImages, fakeJpeg, harness } from "./harness.js";
 import { parseConversion, resetRatesCache } from "../src/currency.js";
 import { transliterate, hasCyrillic } from "../src/translit.js";
 import { memoryStats } from "../src/stats.js";
@@ -105,6 +105,69 @@ describe("фото → стікер", () => {
 
     h.tg.stickerSets.set("ara111_by_test_bot", new Array(120).fill({}));
     assert.match(h.texts(await h.press("sticker:keep", photoMsg(h))), /набір заповнений/);
+  });
+});
+
+describe("фото → емодзі й мозаїка", () => {
+  const menuOf = (calls) => calls.find((c) => c.method === "editMessageText");
+
+  it("меню пояснює про Telegram Premium — і тим, у кого він є, і тим, у кого немає", async () => {
+    const h = harness();
+    const plain = menuOf(await h.press("emoji", photoMsg(h)));
+    assert.match(plain.payload.text, /Потрібен Telegram Premium/);
+    assert.deepEqual(buttons(plain).map((b) => b.callback_data), ["emoji:cut", "emoji:keep", "emoji:3", "emoji:5"]);
+    const premium = menuOf(await h.press("emoji", photoMsg(h), { ...USER, is_premium: true }));
+    assert.match(premium.payload.text, /лише з Telegram Premium — у тебе він є/);
+  });
+
+  it("одне емодзі: 100×100 з прозорими полями, у власний набір емодзі, з прев'ю в повідомленні", async () => {
+    const h = harness({ fileBytes: fakeJpeg(800, 600, 300 * KB) });
+    const first = await h.press("emoji:cut", photoMsg(h));
+    const created = first.find((c) => c.method === "createNewStickerSet").payload;
+    assert.equal(created.name, "emoji111_by_test_bot");
+    assert.equal(created.sticker_type, "custom_emoji");
+    assert.equal(created.title, "Мої емодзі · @test_bot");
+    assert.deepEqual(h.images.calls[0].transform,
+      { width: 100, height: 100, fit: "pad", background: "rgba(0,0,0,0)", segment: "foreground" });
+    const done = first.find((c) => /Готово/.test(c.payload.text ?? ""));
+    assert.match(done.payload.text, /<tg-emoji emoji-id="ce1">🙂<\/tg-emoji>/);
+    assert.match(done.payload.text, /лише з Telegram Premium/);
+    assert.equal(buttons(done)[0].url, "https://t.me/addemoji/emoji111_by_test_bot");
+
+    const second = await h.press("emoji:keep", photoMsg(h));
+    assert.ok(second.some((c) => c.method === "addStickerToSet"));
+    assert.match(second.find((c) => /Готово/.test(c.payload.text ?? "")).payload.text, /там уже 2 шт/);
+  });
+
+  it("якщо власні емодзі в тексті не пройшли — готово все одно, просто без прев'ю", async () => {
+    const h = harness();
+    h.tg.rejectCustomEmoji = true;
+    const calls = await h.press("emoji:keep", photoMsg(h));
+    const done = calls.filter((c) => /Готово/.test(c.payload.text ?? "")).at(-1);
+    assert.doesNotMatch(done.payload.text, /tg-emoji/);
+  });
+
+  it("мозаїка 3×3: квадрат по центру → 9 клітинок по порядку → окремий набір і картинка з емодзі", async () => {
+    const h = harness({ fileBytes: fakeJpeg(800, 600, 300 * KB) });
+    const calls = await h.press("emoji:3", photoMsg(h));
+    const created = calls.find((c) => c.method === "createNewStickerSet").payload;
+    assert.match(created.name, /^mosaic111t[0-9a-z]+_by_test_bot$/);
+    assert.equal(created.sticker_type, "custom_emoji");
+    assert.equal(created.stickers.length, 9);
+    assert.equal(h.images.calls.length, 10);
+    assert.deepEqual(h.images.calls[0].transform, { width: 300, height: 300, fit: "cover" });
+    assert.deepEqual(h.images.calls[6].transform.trim, { top: 100, left: 200, bottom: 100, right: 0 });
+    const mosaic = calls.find((c) => c.method === "sendMessage" && /tg-emoji/.test(c.payload.text)).payload.text;
+    const rows = mosaic.split("\n").map((row) => [...row.matchAll(/emoji-id="(ce\d+)"/g)].map((m) => m[1]));
+    assert.deepEqual(rows, [["ce1", "ce2", "ce3"], ["ce4", "ce5", "ce6"], ["ce7", "ce8", "ce9"]]);
+    assert.match(h.texts(calls), /Мозаїка 3×3 готова/);
+  });
+
+  it("мозаїка 5×5 — 25 емодзі за 26 обробок", async () => {
+    const h = harness();
+    const calls = await h.press("emoji:5", photoMsg(h));
+    assert.equal(calls.find((c) => c.method === "createNewStickerSet").payload.stickers.length, 25);
+    assert.equal(h.images.calls.length, 26);
   });
 });
 

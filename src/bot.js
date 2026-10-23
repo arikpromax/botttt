@@ -5,7 +5,9 @@
 import { Bot, GrammyError, InlineKeyboard, InputFile } from "grammy";
 import { autoRetry } from "@grammyjs/auto-retry";
 import { RestrictedError, findTikTokUrl, resolveTikTok } from "./tiktok.js";
-import { MonthLimitError, UnsupportedImageError, compressToSize, parseSize, sizeChoices, toJpeg, toScan, toSticker } from "./compress.js";
+import {
+  MonthLimitError, UnsupportedImageError, compressToSize, parseSize, sizeChoices, toEmoji, toJpeg, toMosaic, toScan, toSticker,
+} from "./compress.js";
 import { imagesToPdf, jpegInfo, pdfReady } from "./pdf.js";
 import { NoAudioError, UnsupportedVideoError, extractAudio } from "./audio.js";
 import { QR_MAX_BYTES, makeQr } from "./qr.js";
@@ -20,6 +22,7 @@ const URL_LIMIT = 20 * 1024 * 1024; // за посиланням Telegram сам
 const UPLOAD_LIMIT = 50 * 1024 * 1024; // бот може надіслати файл до 50 МБ
 const FILE_LIMIT = 20 * 1024 * 1024; // бот може отримати файл до 20 МБ
 const STICKER_EMOJI = "🙂"; // Telegram вимагає емодзі для кожного стікера; змінити можна в @Stickers
+const MOSAIC_EMOJI = "🧩"; // так клітинки мозаїки виглядають там, де власні емодзі не показуються
 
 export const COMMANDS = [{ command: "start", description: "Що вміє бот" }];
 export const OWNER_COMMANDS = [...COMMANDS, { command: "stats", description: "Статистика (бачиш лише ти)" }];
@@ -35,7 +38,8 @@ export function createBot(token, {
 
   const reply = (msg) => ({ reply_parameters: { message_id: msg.message_id, allow_sending_without_reply: true } });
   const send = (chatId, text, extra) => bot.api.sendMessage(chatId, text, { ...HTML, ...extra });
-  const edit = (msg, text, extra) => bot.api.editMessageText(msg.chat.id, msg.message_id, text, { ...HTML, ...extra }).catch(() => {});
+  const editOrThrow = (msg, text, extra) => bot.api.editMessageText(msg.chat.id, msg.message_id, text, { ...HTML, ...extra });
+  const edit = (msg, text, extra) => editOrThrow(msg, text, extra).catch(() => {});
   // Збій статистики не має заважати самій дії.
   const track = async (msg, feature) => {
     try {
@@ -208,7 +212,7 @@ export function createBot(token, {
       keyboard.text(formatSize(size), `size:${size}`);
       if (i % 3 === 2 || i === choices.length - 1) keyboard.row();
     });
-    keyboard.text(t.pdfButton, "pdf").text(t.scanButton, "scan").row().text(t.stickerButton, "sticker");
+    keyboard.text(t.pdfButton, "pdf").text(t.scanButton, "scan").row().text(t.stickerButton, "sticker").text(t.emojiButton, "emoji");
     if (!image.jpeg) keyboard.text(t.jpgButton, "jpg");
     return keyboard;
   }
@@ -303,25 +307,32 @@ export function createBot(token, {
     }
   }
 
-  // ---- Фото → стікер ----
-  // Кожен отримує власний набір: його створено від імені користувача (він власник і може правити його
-  // в @Stickers), бот лише додає туди нові стікери.
+  // ---- Фото → стікер і емодзі ----
+  // Кожен отримує власні набори: їх створено від імені користувача (він власник і може правити їх
+  // в @Stickers), бот лише додає туди нові стікери й емодзі.
 
-  const stickerSetName = (userId) => `ara${userId}_by_${bot.botInfo.username}`;
+  const stickerOf = (bytes, emoji) => ({ sticker: new InputFile(bytes, "sticker.webp"), format: "static", emoji_list: [emoji] });
+  const setFull = (err) => /STICKERS_TOO_MUCH/.test(err.description ?? "");
+  // Власне емодзі в тексті; fallback — звичайне емодзі там, де власне не показується.
+  const customEmoji = (id, fallback) => `<tg-emoji emoji-id="${id}">${fallback}</tg-emoji>`;
+
+  // Додає в набір користувача; якщо набору ще немає — створює. → набір (новий елемент — останній).
+  async function addToSet(userId, name, title, item, type = "regular") {
+    try {
+      await bot.api.addStickerToSet(userId, name, item());
+    } catch (err) {
+      if (!/STICKERSET_INVALID/.test(err.description ?? "")) throw err;
+      await bot.api.createNewStickerSet(userId, name, title, [item()], { sticker_type: type });
+    }
+    return bot.api.getStickerSet(name);
+  }
 
   async function makeSticker(msg, image, userId, cutout, status) {
     await edit(status, t.stickerMaking);
     try {
       const result = await toSticker(images, await download(image.fileId), { cutout });
-      const name = stickerSetName(userId);
-      const sticker = () => ({ sticker: new InputFile(result.bytes, "sticker.webp"), format: "static", emoji_list: [STICKER_EMOJI] });
-      try {
-        await bot.api.addStickerToSet(userId, name, sticker());
-      } catch (err) {
-        if (!/STICKERSET_INVALID/.test(err.description ?? "")) throw err;
-        await bot.api.createNewStickerSet(userId, name, t.stickerSetTitle(bot.botInfo.username), [sticker()]);
-      }
-      const set = await bot.api.getStickerSet(name);
+      const name = `ara${userId}_by_${bot.botInfo.username}`;
+      const set = await addToSet(userId, name, t.stickerSetTitle(bot.botInfo.username), () => stickerOf(result.bytes, STICKER_EMOJI));
       await edit(status, t.stickerDone(set.stickers.length, cutout && !result.cutout), {
         reply_markup: new InlineKeyboard().url(t.stickerSetButton, `https://t.me/addstickers/${name}`),
       });
@@ -329,7 +340,53 @@ export function createBot(token, {
       console.log(`Стікер: ${set.stickers.length}-й у наборі${cutout ? (result.cutout ? ", без фону" : ", фон не прибрано") : ""}`);
       await track(msg, "sticker");
     } catch (err) {
-      await edit(status, /STICKERS_TOO_MUCH/.test(err.description ?? "") ? t.stickerSetFull : photoError(err));
+      await edit(status, setFull(err) ? t.stickerSetFull : photoError(err));
+    }
+  }
+
+  // Одне емодзі — у постійний набір емодзі користувача.
+  async function makeEmoji(msg, image, userId, cutout, status) {
+    await edit(status, t.emojiMaking);
+    try {
+      const result = await toEmoji(images, await download(image.fileId), { cutout });
+      const name = `emoji${userId}_by_${bot.botInfo.username}`;
+      const set = await addToSet(userId, name, t.emojiSetTitle(bot.botInfo.username),
+        () => stickerOf(result.bytes, STICKER_EMOJI), "custom_emoji");
+      const done = (emoji) => t.emojiDone(set.stickers.length, cutout && !result.cutout, emoji);
+      const extra = { reply_markup: new InlineKeyboard().url(t.emojiSetButton, `https://t.me/addemoji/${name}`) };
+      // Власні емодзі бот може вставити в текст, лише поки власник бота має Premium; інакше — без прев'ю.
+      await editOrThrow(status, done(customEmoji(set.stickers.at(-1).custom_emoji_id, STICKER_EMOJI)), extra)
+        .catch(() => edit(status, done(""), extra));
+      console.log(`Емодзі: ${set.stickers.length}-е в наборі${cutout ? (result.cutout ? ", без фону" : ", фон не прибрано") : ""}`);
+      await track(msg, "emoji");
+    } catch (err) {
+      await edit(status, setFull(err) ? t.emojiSetFull : photoError(err));
+    }
+  }
+
+  // Мозаїка n×n — окремим набором (щоб не забивати особистий і щоб клітинки йшли по порядку),
+  // а сама картинка — повідомленням із n рядків по n емодзі.
+  async function makeMosaic(msg, image, userId, n, status) {
+    await edit(status, t.mosaicMaking(n));
+    try {
+      const tiles = await toMosaic(images, await download(image.fileId), n);
+      const name = `mosaic${userId}t${Date.now().toString(36)}_by_${bot.botInfo.username}`;
+      await bot.api.createNewStickerSet(userId, name, t.mosaicSetTitle(bot.botInfo.username),
+        tiles.map((bytes) => stickerOf(bytes, MOSAIC_EMOJI)), { sticker_type: "custom_emoji" });
+      const { stickers } = await bot.api.getStickerSet(name);
+      const rows = [];
+      for (let i = 0; i < stickers.length; i += n) {
+        rows.push(stickers.slice(i, i + n).map((s) => customEmoji(s.custom_emoji_id, MOSAIC_EMOJI)).join(""));
+      }
+      await edit(status, t.mosaicDone(n), {
+        reply_markup: new InlineKeyboard().url(t.mosaicSetButton, `https://t.me/addemoji/${name}`),
+      });
+      await bot.api.sendMessage(msg.chat.id, rows.join("\n"), { ...HTML, ...reply(msg) })
+        .catch((err) => console.error("Мозаїку не показано:", err.description ?? err.message));
+      console.log(`Мозаїка ${n}×${n}: ${stickers.length} емодзі`);
+      await track(msg, "mosaic");
+    } catch (err) {
+      await edit(status, photoError(err));
     }
   }
 
@@ -527,6 +584,25 @@ export function createBot(token, {
   onButton(/^sticker:(cut|keep)$/, ({ ctx, menu, original }) => {
     const image = imageOf(original);
     return image ? makeSticker(original, image, ctx.from.id, ctx.match[1] === "cut", menu) : edit(menu, t.photoGone);
+  });
+
+  // Емодзі: одне (з фоном чи без) або мозаїка. Надсилати власні емодзі можна лише з Premium — про це меню й каже.
+  onButton("emoji", ({ ctx, menu, original }) => {
+    if (!imageOf(original)) return edit(menu, t.photoGone);
+    return edit(menu, t.emojiMenu(Boolean(ctx.from.is_premium)), {
+      reply_markup: new InlineKeyboard()
+        .text(t.emojiCutButton, "emoji:cut").text(t.emojiKeepButton, "emoji:keep").row()
+        .text(t.mosaicButton(3), "emoji:3").text(t.mosaicButton(5), "emoji:5"),
+    });
+  });
+
+  onButton(/^emoji:(cut|keep|3|5)$/, ({ ctx, menu, original }) => {
+    const image = imageOf(original);
+    if (!image) return edit(menu, t.photoGone);
+    const choice = ctx.match[1];
+    return /^\d$/.test(choice)
+      ? makeMosaic(original, image, ctx.from.id, Number(choice), menu)
+      : makeEmoji(original, image, ctx.from.id, choice === "cut", menu);
   });
 
   onButton(/^(album|scan):(.+)$/, async ({ ctx, menu, original }) => {

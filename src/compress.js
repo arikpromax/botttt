@@ -25,18 +25,21 @@ export class MonthLimitError extends Error {}
 export class UnsupportedImageError extends Error {}
 
 const streamOf = (bytes) => new Response(bytes).body;
+const isLimit = (err) => String(err?.message ?? err).includes("9422");
+const WEBP = { format: "image/webp", quality: 90 };
 
-async function render(images, bytes, width, quality) {
+// Одна обробка Cloudflare Images; вичерпаний місячний ліміт — MonthLimitError.
+async function transformed(images, bytes, transform, output) {
   try {
-    const result = await images.input(streamOf(bytes))
-      .transform({ width })
-      .output({ format: "image/jpeg", quality });
+    const result = await images.input(streamOf(bytes)).transform(transform).output(output);
     return new Uint8Array(await (await result.response()).arrayBuffer());
   } catch (err) {
-    if (String(err?.message ?? err).includes("9422")) throw new MonthLimitError();
+    if (isLimit(err)) throw new MonthLimitError();
     throw err;
   }
 }
+
+const render = (images, bytes, width, quality) => transformed(images, bytes, { width }, { format: "image/jpeg", quality });
 
 // Будь-яке фото → JPEG не ширше за maxWidth (із поворотом за EXIF) — для PDF і «У JPG».
 export async function toJpeg(images, bytes, { maxWidth, quality }) {
@@ -50,29 +53,51 @@ export async function toJpeg(images, bytes, { maxWidth, quality }) {
   return render(images, bytes, Math.min(info.width, maxWidth), quality);
 }
 
-// Стікер Telegram: WEBP, одна сторона рівно 512 px, друга — не більше. cutout — прибрати фон
-// (segment: foreground); якщо Cloudflare не зміг — стікер буде з фоном. → { bytes, cutout }
-export async function toSticker(images, bytes, { cutout = true } = {}) {
-  const make = async (cut) => {
-    const transform = { width: 512, height: 512, fit: "contain", ...(cut ? { segment: "foreground" } : {}) };
-    const result = await images.input(streamOf(bytes)).transform(transform).output({ format: "image/webp", quality: 90 });
-    return new Uint8Array(await (await result.response()).arrayBuffer());
-  };
-  const limit = (err) => String(err?.message ?? err).includes("9422");
+// WEBP з прибраним фоном (segment: foreground), якщо cutout; якщо Cloudflare не зміг — з фоном. → { bytes, cutout }
+async function withCutout(images, bytes, transform, cutout) {
   if (cutout) {
     try {
-      return { bytes: await make(true), cutout: true };
+      return { bytes: await transformed(images, bytes, { ...transform, segment: "foreground" }, WEBP), cutout: true };
     } catch (err) {
-      if (limit(err)) throw new MonthLimitError();
+      if (err instanceof MonthLimitError) throw err;
       console.warn("Фон не прибрано:", err?.message ?? err);
     }
   }
   try {
-    return { bytes: await make(false), cutout: false };
+    return { bytes: await transformed(images, bytes, transform, WEBP), cutout: false };
   } catch (err) {
-    if (limit(err)) throw new MonthLimitError();
-    throw new UnsupportedImageError();
+    throw err instanceof MonthLimitError ? err : new UnsupportedImageError();
   }
+}
+
+// Стікер Telegram: одна сторона рівно 512 px, друга — не більше.
+export const toSticker = (images, bytes, { cutout = true } = {}) =>
+  withCutout(images, bytes, { width: 512, height: 512, fit: "contain" }, cutout);
+
+// Емодзі Telegram: рівно 100×100 px — фото вписується в квадрат, поля прозорі.
+export const EMOJI_SIDE = 100;
+export const toEmoji = (images, bytes, { cutout = true } = {}) =>
+  withCutout(images, bytes, { width: EMOJI_SIDE, height: EMOJI_SIDE, fit: "pad", background: "rgba(0,0,0,0)" }, cutout);
+
+// Мозаїка: фото обрізається до квадрата по центру й ріжеться на n×n емодзі. → клітинки по рядках, зліва направо.
+// Обробок: 1 + n² (3×3 — 10, 5×5 — 26).
+export async function toMosaic(images, bytes, n) {
+  const side = n * EMOJI_SIDE;
+  const square = await transformed(images, bytes, { width: side, height: side, fit: "cover" }, { format: "image/jpeg", quality: 95 });
+  const cells = [];
+  for (let r = 0; r < n; r++) {
+    for (let c = 0; c < n; c++) {
+      const top = r * EMOJI_SIDE, left = c * EMOJI_SIDE;
+      cells.push({ top, left, bottom: side - top - EMOJI_SIDE, right: side - left - EMOJI_SIDE });
+    }
+  }
+  // По 5 одночасно: набагато швидше, ніж по одній, і не забагато паралельних запитів.
+  const tiles = [];
+  for (let i = 0; i < cells.length; i += 5) {
+    tiles.push(...(await Promise.all(cells.slice(i, i + 5).map((trim) =>
+      transformed(images, square, { trim, width: EMOJI_SIDE, height: EMOJI_SIDE, fit: "cover" }, WEBP)))));
+  }
+  return tiles;
 }
 
 // «Скан документа»: чорно-біле, контрастніше, світліше й різкіше, не ширше за A4 у 300 dpi.
@@ -83,15 +108,9 @@ export async function toScan(images, bytes) {
   } catch {
     throw new UnsupportedImageError();
   }
-  try {
-    const result = await images.input(streamOf(bytes))
-      .transform({ width: Math.min(info.width, 2480), saturation: 0, contrast: 1.5, brightness: 1.12, sharpen: 1.5 })
-      .output({ format: "image/jpeg", quality: 85 });
-    return new Uint8Array(await (await result.response()).arrayBuffer());
-  } catch (err) {
-    if (String(err?.message ?? err).includes("9422")) throw new MonthLimitError();
-    throw err;
-  }
+  return transformed(images, bytes,
+    { width: Math.min(info.width, 2480), saturation: 0, contrast: 1.5, brightness: 1.12, sharpen: 1.5 },
+    { format: "image/jpeg", quality: 85 });
 }
 
 // → { bytes, width, height, size, fits }; fits = false, якщо до target не дотягли й віддаємо найменше, що вийшло.

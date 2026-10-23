@@ -5,7 +5,7 @@
 const KEEP_DAYS = 90;
 export const FEATURES = {
   start: "Привітання", tiktok: "TikTok", compress: "Стиснення фото", pdf: "Фото → PDF", album: "Альбом → PDF",
-  scan: "Скан документа", jpg: "Фото → JPG", sticker: "Стікер", sound: "Звук із відео", qr: "QR-код",
+  scan: "Скан документа", jpg: "Фото → JPG", sticker: "Стікер", emoji: "Емодзі", mosaic: "Мозаїка з емодзі", sound: "Звук із відео", qr: "QR-код",
   currency: "Валюти", translit: "Транслітерація",
 };
 

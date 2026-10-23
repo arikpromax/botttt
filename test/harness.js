@@ -105,6 +105,10 @@ export function harness({
     if (tg.rejectCover && payload.cover) {
       return { ok: false, error_code: 400, description: "Bad Request: wrong cover" };
     }
+    // Власник бота без Premium: власні емодзі в тексті Telegram не приймає.
+    if (tg.rejectCustomEmoji && String(payload.text ?? "").includes("<tg-emoji")) {
+      return { ok: false, error_code: 400, description: "Bad Request: can't use custom emoji" };
+    }
     // Набори стікерів: addStickerToSet до неіснуючого набору — STICKERSET_INVALID, як у Telegram.
     const set = tg.stickerSets.get(payload.name);
     if (method === "addStickerToSet") {
@@ -115,7 +119,7 @@ export function harness({
     }
     if (method === "createNewStickerSet") return (tg.stickerSets.set(payload.name, [...payload.stickers]), ok(true));
     if (method === "getStickerSet") {
-      return ok({ name: payload.name, title: "t", sticker_type: "regular", stickers: set.map((_, i) => ({ file_id: `st${i + 1}` })) });
+      return ok({ name: payload.name, title: "t", sticker_type: "regular", stickers: set.map((_, i) => ({ file_id: `st${i + 1}`, custom_emoji_id: `ce${i + 1}` })) });
     }
     if (method.startsWith("answer") || method.startsWith("delete") || method === "editMessageText") return ok(true);
     if (method === "sendMediaGroup") return ok(payload.media.map(() => ({ message_id: tg.nextId++, date: 0, chat: { id: payload.chat_id, type: "private" } })));
@@ -139,8 +143,8 @@ export function harness({
     text: (text) => send({ message: message({ text }) }),
     photo: (size, extra) => send({ message: message({ photo: [{ file_id: "small", file_unique_id: "s", width: 90, height: 60, file_size: 2000 }, { file_id: "big", file_unique_id: "b", width: 4000, height: 3000, file_size: size }], ...extra }) }),
     // Натискання кнопки під повідомленням бота, яке було відповіддю на original.
-    press: (data, original) => send({ callback_query: {
-      id: "cq", from: USER, chat_instance: "x", data,
+    press: (data, original, from = USER) => send({ callback_query: {
+      id: "cq", from, chat_instance: "x", data,
       message: { message_id: 999, date: 0, chat, from: { id: 1, is_bot: true, first_name: "Ara Converter" }, text: "…", reply_to_message: original },
     } }),
     lastUserMessage: () => message({}),

@@ -176,7 +176,7 @@ describe("стиснення фото", () => {
     const h = harness();
     const [ask] = await h.photo(4 * MB);
     const buttons = ask.payload.reply_markup.inline_keyboard.flat().map((b) => b.text);
-    assert.deepEqual(buttons, ["3 МБ", "2 МБ", "1 МБ", "500 КБ", "300 КБ", "200 КБ", "100 КБ", "50 КБ", "У PDF", "Скан документа", "Стікер"]);
+    assert.deepEqual(buttons, ["3 МБ", "2 МБ", "1 МБ", "500 КБ", "300 КБ", "200 КБ", "100 КБ", "50 КБ", "У PDF", "Скан документа", "Стікер", "Емодзі"]);
 
     const original = { message_id: ask.payload.reply_parameters.message_id, date: 0, chat: { id: 111, type: "private" },
       photo: [{ file_id: "big", file_unique_id: "b", width: 4000, height: 3000, file_size: 4 * MB }] };
@@ -210,11 +210,11 @@ describe("стиснення фото", () => {
     assert.match(h.texts(calls), /фото й так оптимальне \(60 КБ\)/);
   });
 
-  it("маленьке фото не стискає, але пропонує PDF, скан і стікер", async () => {
+  it("маленьке фото не стискає, але пропонує PDF, скан, стікер і емодзі", async () => {
     const h = harness();
     const [menu] = await h.photo(40 * KB);
     assert.match(menu.payload.text, /уже маленьке/);
-    assert.deepEqual(menu.payload.reply_markup.inline_keyboard.flat().map((b) => b.text), ["У PDF", "Скан документа", "Стікер"]);
+    assert.deepEqual(menu.payload.reply_markup.inline_keyboard.flat().map((b) => b.text), ["У PDF", "Скан документа", "Стікер", "Емодзі"]);
   });
 
   it("каже про вичерпаний місячний ліміт", async () => {
