@@ -1,6 +1,7 @@
 // TikTok без водяного знака. Джерела по черзі, поки якесь не спрацює:
-//   1) сама сторінка TikTok (відео playAddr — без водяного знака, але віддається лише з куками сторінки);
-//   2) сервіс tikwm.com (безкоштовно 10 000 запитів на день на IP — на спільних адресах Cloudflare часто вичерпано).
+//   1) сервіс tikwm.com — оригінальна якість (HD, зазвичай 1080p), але безкоштовно лише 10 000 запитів на день
+//      на IP, а адреси Cloudflare спільні, тож ліміт часто вичерпаний;
+//   2) сама сторінка TikTok — завжди доступна, але максимум 540p (відео playAddr віддається лише з куками сторінки).
 // Джерела змінюються — правити треба лише цей файл.
 
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
@@ -79,7 +80,7 @@ export async function fromTikwm(url, fetch = globalThis.fetch) {
   };
 }
 
-export const SOURCES = [fromTikTokPage, fromTikwm];
+export const SOURCES = [fromTikwm, fromTikTokPage];
 
 export async function resolveTikTok(url, fetch = globalThis.fetch, sources = SOURCES) {
   const errors = [];

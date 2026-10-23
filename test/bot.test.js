@@ -82,7 +82,7 @@ describe("TikTok", () => {
     assert.ok(calls.some((c) => c.method === "sendAudio"));
   });
 
-  it("бере відео прямо зі сторінки TikTok і передає його з куками сторінки", async () => {
+  it("коли tikwm не відповідає — бере відео прямо зі сторінки TikTok і передає його з куками", async () => {
     const h = harness({ page: {
       desc: "Котик", author: { uniqueId: "cat" },
       video: { playAddr: "https://cdn.test/page.mp4", size: "9513819", width: 576, height: 1024, duration: 58, originCover: "https://cdn.test/c.jpg" },
@@ -95,13 +95,13 @@ describe("TikTok", () => {
     const download = h.fetches.find((f) => f.url === "https://cdn.test/page.mp4");
     assert.match(download.headers.cookie, /ttwid=a1; tt_chain_token=b2/);
     assert.ok(h.fetches.some((f) => f.url === "https://cdn.test/page.m4a"));
-    assert.ok(!h.fetches.some((f) => f.url.startsWith("https://www.tikwm.com")), "запасне джерело не потрібне");
   });
 
-  it("якщо сторінка TikTok недоступна — бере з tikwm", async () => {
-    const h = harness({ tiktok: tiktokVideo(5 * MB) }); // сторінка відповідає 403
+  it("спершу пробує tikwm (HD) і тоді сторінку TikTok не чіпає", async () => {
+    const h = harness({ tiktok: tiktokVideo(5 * MB), page: { video: { playAddr: "https://cdn.test/page.mp4" } } });
     const calls = await h.text(LINK);
     assert.equal(calls.find((c) => c.method === "sendVideo").payload.video, "https://cdn.test/hd.mp4");
+    assert.ok(!h.fetches.some((f) => /tiktok\.com\//.test(f.url)), "сторінка не потрібна");
   });
 
   it("каже, що не вдалося, якщо сервіс не впізнав посилання", async () => {
