@@ -38,6 +38,18 @@ async function render(images, bytes, width, quality) {
   }
 }
 
+// Будь-яке фото → JPEG не ширше за maxWidth (із поворотом за EXIF) — для PDF і «У JPG».
+export async function toJpeg(images, bytes, { maxWidth, quality }) {
+  let info;
+  try {
+    info = await images.info(streamOf(bytes));
+  } catch {
+    throw new UnsupportedImageError();
+  }
+  if (!info?.width) throw new UnsupportedImageError();
+  return render(images, bytes, Math.min(info.width, maxWidth), quality);
+}
+
 // → { bytes, width, height, size, fits }; fits = false, якщо до target не дотягли й віддаємо найменше, що вийшло.
 export async function compressToSize(images, bytes, target) {
   let info;

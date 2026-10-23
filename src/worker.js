@@ -2,11 +2,16 @@
 // Відповідаємо одразу, а обробку (завантаження з TikTok, стиснення) доробляємо у фоні —
 // інакше Telegram вважав би довгу обробку збоєм і надсилав би те саме оновлення ще раз.
 import { createBot } from "./bot.js";
+import { d1Albums } from "./albums.js";
 
 let ready = null; // бот живе весь час життя екземпляра воркера: getMe — лише при холодному старті
 function setup(env) {
   ready ??= (async () => {
-    const bot = createBot(env.BOT_TOKEN, { channel: env.CHANNEL || undefined, images: env.IMAGES });
+    const bot = createBot(env.BOT_TOKEN, {
+      channel: env.CHANNEL || undefined,
+      images: env.IMAGES,
+      albums: env.DB ? d1Albums(env.DB) : null,
+    });
     await bot.init();
     return bot;
   })().catch((err) => {

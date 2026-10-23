@@ -1,5 +1,16 @@
 // Бот із підробленими Telegram, tikwm і Cloudflare Images: перевіряємо логіку без мережі.
 import { createBot } from "../src/bot.js";
+import { memoryAlbums } from "../src/albums.js";
+
+// Найпростіший «JPEG»: SOI, JFIF, SOF0 з розмірами й 3 каналами, далі нулі до потрібного розміру.
+export function fakeJpeg(width = 800, height = 600, size = 2048) {
+  const head = [0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0, 0, 1, 0, 1, 0, 0,
+    0xff, 0xc0, 0x00, 0x11, 0x08, height >> 8, height & 255, width >> 8, width & 255, 0x03, 1, 0x22, 0, 2, 0x11, 1, 3, 0x11, 1];
+  const out = new Uint8Array(Math.max(size, head.length + 2));
+  out.set(head);
+  out.set([0xff, 0xd9], out.length - 2);
+  return out;
+}
 
 export const USER = { id: 111, is_bot: false, first_name: "Таня" };
 const BOT_INFO = {
@@ -25,7 +36,7 @@ export function fakeImages({ width = 4000, height = 3000, base = 4 * MB, fail } 
           if (fail === "limit") throw new Error("IMAGES_TRANSFORM_ERROR 9422: limit");
           calls.push({ width: w, quality });
           const size = Math.round(base * (w / width) ** 2 * (quality / 100) ** 2);
-          return { response: async () => new Response(new Uint8Array(size)) };
+          return { response: async () => new Response(fakeJpeg(w, Math.round((w * height) / width), size)) };
         },
       };
       return chain;
@@ -57,7 +68,11 @@ export function fakeMp4({ audioKbps = 0 } = {}) {
   return concat([box("ftyp", ascii("isom")), box("moov", box("trak", mdia)), box("mdat", new Uint8Array(64))]);
 }
 
-export function harness({ channel = "@chan", tiktok, page, files = {}, images = fakeImages(), fileBytes = 4 * MB } = {}) {
+// fileBytes — що віддає Telegram, коли бот завантажує файл користувача: розмір (нулі) або самі байти.
+export function harness({
+  channel = "@chan", tiktok, page, files = {}, images = fakeImages(), fileBytes = 4 * MB,
+  albums = memoryAlbums(), albumWait = 30,
+} = {}) {
   const tg = { member: "member", calls: [], rejectUrl: false, nextId: 100 };
   const fetches = [];
   const fakeFetch = async (url, init = {}) => {
@@ -66,13 +81,15 @@ export function harness({ channel = "@chan", tiktok, page, files = {}, images = 
       return new Response(JSON.stringify(tiktok ?? { code: -1, msg: "no tiktok" }), { headers: { "content-type": "application/json" } });
     }
     if (/tiktok\.com\//.test(String(url))) return page ? tiktokPage(page) : new Response("blocked", { status: 403 });
-    if (String(url).startsWith("https://api.telegram.org/file/")) return new Response(new Uint8Array(fileBytes));
+    if (String(url).startsWith("https://api.telegram.org/file/")) {
+      return new Response(typeof fileBytes === "number" ? new Uint8Array(fileBytes) : fileBytes);
+    }
     if (files[String(url)]) return new Response(files[String(url)]);
     if (String(url).startsWith("https://cdn.test/")) return new Response(new Uint8Array(1024));
     return new Response("not found", { status: 404 });
   };
 
-  const bot = createBot("123:TEST", { channel, images, fetch: fakeFetch, botInfo: BOT_INFO });
+  const bot = createBot("123:TEST", { channel, images, albums, albumWait, fetch: fakeFetch, botInfo: BOT_INFO });
   bot.api.config.use(async (prev, method, payload) => {
     tg.calls.push({ method, payload });
     const ok = (result) => ({ ok: true, result });
@@ -112,6 +129,10 @@ export function harness({ channel = "@chan", tiktok, page, files = {}, images = 
       message: { message_id: 999, date: 0, chat, from: { id: 1, is_bot: true, first_name: "Ara Converter" }, text: "…", reply_to_message: original },
     } }),
     lastUserMessage: () => message({}),
+    // Будь-яке повідомлення користувача: newMessage(extra) — лише побудувати, post(extra) — надіслати боту.
+    newMessage: message,
+    post: (extra) => send({ message: message(extra) }),
+    albums,
   };
 }
 

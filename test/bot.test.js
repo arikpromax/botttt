@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { fakeImages, fakeMp4, harness, tiktokVideo } from "./harness.js";
+import { fakeImages, fakeJpeg, fakeMp4, harness, tiktokVideo } from "./harness.js";
+import { sampleVideo } from "./fixtures.js";
 import { audioKbps } from "../src/mp4.js";
 import { findTikTokUrl, resolveTikTok } from "../src/tiktok.js";
 import { compressToSize, parseSize, sizeChoices, MonthLimitError } from "../src/compress.js";
@@ -175,7 +176,7 @@ describe("стиснення фото", () => {
     const h = harness();
     const [ask] = await h.photo(4 * MB);
     const buttons = ask.payload.reply_markup.inline_keyboard.flat().map((b) => b.text);
-    assert.deepEqual(buttons, ["3 МБ", "2 МБ", "1 МБ", "500 КБ", "300 КБ", "200 КБ", "100 КБ", "50 КБ"]);
+    assert.deepEqual(buttons, ["3 МБ", "2 МБ", "1 МБ", "500 КБ", "300 КБ", "200 КБ", "100 КБ", "50 КБ", "У PDF"]);
 
     const original = { message_id: ask.payload.reply_parameters.message_id, date: 0, chat: { id: 111, type: "private" },
       photo: [{ file_id: "big", file_unique_id: "b", width: 4000, height: 3000, file_size: 4 * MB }] };
@@ -209,14 +210,76 @@ describe("стиснення фото", () => {
     assert.match(h.texts(calls), /фото й так оптимальне \(60 КБ\)/);
   });
 
-  it("маленьке фото не чіпає", async () => {
+  it("маленьке фото не стискає, але пропонує PDF", async () => {
     const h = harness();
-    assert.match(h.texts(await h.photo(40 * KB)), /вже маленьке/);
+    const [menu] = await h.photo(40 * KB);
+    assert.match(menu.payload.text, /уже маленьке/);
+    assert.deepEqual(menu.payload.reply_markup.inline_keyboard.flat().map((b) => b.text), ["У PDF"]);
   });
 
   it("каже про вичерпаний місячний ліміт", async () => {
     const h = harness({ images: fakeImages({ fail: "limit" }) });
     assert.match(h.texts(await h.photo(4 * MB, { caption: "300кб" })), /Ліміт стиснень/);
+  });
+});
+
+describe("фото → PDF і JPG", () => {
+  const photoMsg = (h) => h.newMessage({ photo: [{ file_id: "big", file_unique_id: "b", width: 800, height: 600, file_size: 300 * KB }] });
+
+  it("одне фото → PDF на одну сторінку (фото з Telegram — без зайвої обробки)", async () => {
+    const h = harness({ fileBytes: fakeJpeg(800, 600, 300 * KB) });
+    const calls = await h.press("pdf", photoMsg(h));
+    const doc = calls.find((c) => c.method === "sendDocument").payload;
+    assert.equal(doc.document.filename, "photo.pdf");
+    assert.match(doc.caption, /PDF · 1 сторінка/);
+    assert.equal(h.images.calls.length, 0);
+  });
+
+  it("PNG-файл → кнопка «У JPG» і перетворення через Cloudflare Images", async () => {
+    const h = harness({ fileBytes: 2 * MB });
+    const [menu] = await h.post({ document: { file_id: "png", file_unique_id: "p", file_name: "скрін.png", mime_type: "image/png", file_size: 2 * MB } });
+    assert.ok(menu.payload.reply_markup.inline_keyboard.flat().some((b) => b.callback_data === "jpg"));
+    const original = h.newMessage({ document: { file_id: "png", file_unique_id: "p", file_name: "скрін.png", mime_type: "image/png", file_size: 2 * MB } });
+    const doc = (await h.press("jpg", original)).find((c) => c.method === "sendDocument").payload;
+    assert.equal(doc.document.filename, "скрін.jpg");
+    assert.equal(h.images.calls.length, 1);
+  });
+
+  it("альбом → одне меню на весь альбом і PDF з усіх фото", async () => {
+    const h = harness({ fileBytes: fakeJpeg(800, 600, 200 * KB) });
+    const photo = (id) => ({ media_group_id: "G1", photo: [{ file_id: id, file_unique_id: id, width: 800, height: 600, file_size: 200 * KB }] });
+    const [first, second, third] = [h.newMessage(photo("p1")), h.newMessage(photo("p2")), h.newMessage(photo("p3"))];
+    const from = h.tg.calls.length;
+    await Promise.all([first, second, third].map((message) => h.send({ message })));
+    const menus = h.tg.calls.slice(from).filter((c) => c.method === "sendMessage");
+    assert.equal(menus.length, 1);
+    assert.match(menus[0].payload.text, /Альбом: 3 фото/);
+
+    const doc = (await h.press("album:G1", first)).find((c) => c.method === "sendDocument").payload;
+    assert.equal(doc.document.filename, "photos.pdf");
+    assert.match(doc.caption, /3 сторінки/);
+  });
+});
+
+describe("звук із відео", () => {
+  const videoMsg = (h, size) => h.newMessage({ video: { file_id: "v", file_unique_id: "v", width: 720, height: 1280, duration: 3, file_size: size } });
+
+  it("відео → меню → M4A зі звуком", async () => {
+    const video = sampleVideo();
+    const h = harness({ fileBytes: video.bytes });
+    const [menu] = await h.post({ video: { file_id: "v", file_unique_id: "v", width: 720, height: 1280, duration: 3, file_size: video.bytes.length } });
+    assert.deepEqual(menu.payload.reply_markup.inline_keyboard.flat().map((b) => b.callback_data), ["sound"]);
+    const audio = (await h.press("sound", videoMsg(h, video.bytes.length))).find((c) => c.method === "sendAudio").payload;
+    assert.equal(audio.audio.filename, "video.m4a");
+    assert.equal(audio.title, "Звук із відео");
+    assert.equal(audio.duration, 3);
+  });
+
+  it("відео без звуку й завелике — пояснює", async () => {
+    const mute = harness({ fileBytes: sampleVideo({ withAudio: false }).bytes });
+    assert.match(mute.texts(await mute.press("sound", videoMsg(mute, 1000))), /немає звуку/);
+    const big = harness();
+    assert.match(big.texts(await big.post({ video: { file_id: "v", file_unique_id: "v", width: 1, height: 1, duration: 1, file_size: 30 * MB } })), /до 20 МБ/);
   });
 });
 

@@ -8,6 +8,13 @@ send_metrics = false
 [images]
 binding = "IMAGES"
 
+# Тимчасове сховище фото з альбомів (для «Зібрати в PDF»), записи живуть годину.
+[[d1_databases]]
+binding = "DB"
+database_name = "araconverter"
+database_id = "e3604757-9fb7-48a6-b0e2-40cb6a354e34"
+migrations_dir = "migrations"
+
 [vars]
 CHANNEL = "@arawebsite"  # обов'язкова підписка; порожньо — без підписки
 
