@@ -42,6 +42,35 @@ export const CHICKEN = { reward: 300, cooldownMinutes: 15, perDay: 8 };
 // Шифр дня: слово щодня публікується в каналі; 5 спроб на день.
 export const CIPHER = { reward: 3000, tries: 5 };
 
+// Бусти. «Повна енергія» — 3 рази на день, не частіше ніж раз на годину.
+// «Турбо» — 2 рази на день: 20 секунд кожен тап ×5 і без витрати енергії.
+export const BOOSTS = {
+  energy: { perDay: 3, cooldownMinutes: 60 },
+  turbo: { perDay: 2, seconds: 20, multiplier: 5 },
+};
+const TURBO_GRACE_MS = 2000; // останні турбо-тапи доходять до сервера трохи пізніше
+
+// Досягнення: stat — що рахуємо, goal — скільки треба, reward — нагорода (забрати в Профілі).
+export const ACHIEVEMENTS = [
+  { id: "tap1k", stat: "taps", goal: 1_000, reward: 1_000 },
+  { id: "tap10k", stat: "taps", goal: 10_000, reward: 5_000 },
+  { id: "tap100k", stat: "taps", goal: 100_000, reward: 25_000 },
+  { id: "earn100k", stat: "earned", goal: 100_000, reward: 5_000 },
+  { id: "earn1m", stat: "earned", goal: 1_000_000, reward: 50_000 },
+  { id: "friend1", stat: "invited", goal: 1, reward: 1_000 },
+  { id: "friend5", stat: "invited", goal: 5, reward: 5_000 },
+  { id: "friend10", stat: "invited", goal: 10, reward: 15_000 },
+  { id: "streak3", stat: "bestStreak", goal: 3, reward: 1_500 },
+  { id: "streak7", stat: "bestStreak", goal: 7, reward: 7_500 },
+  { id: "streak30", stat: "bestStreak", goal: 30, reward: 30_000 },
+  { id: "chicken1", stat: "chickens", goal: 1, reward: 500 },
+  { id: "chicken25", stat: "chickens", goal: 25, reward: 5_000 },
+  { id: "cipher1", stat: "ciphers", goal: 1, reward: 1_000 },
+  { id: "cipher10", stat: "ciphers", goal: 10, reward: 10_000 },
+  { id: "upgrade5", stat: "maxUpgrade", goal: 5, reward: 10_000 },
+  { id: "allmax", stat: "minUpgrade", goal: MAX_LEVEL, reward: 100_000 },
+];
+
 // Тапати можна одним пальцем: не швидше за 12 разів на секунду (клієнт пускає трохи повільніше).
 // «Відро» тапів: невикористаний час накопичується не більше ніж за 5 секунд — щоб не можна було
 // довго чекати, а потім надіслати тисячу тапів разом.
@@ -74,6 +103,9 @@ export function newPlayer(user, now) {
     streak: 0, streak_day: null,
     chicken_at: now, chicken_day: null, chicken_count: 0,
     cipher_day: null, cipher_tries: 0, cipher_tries_day: null,
+    total_taps: 0, best_streak: 0, chickens_total: 0, ciphers_total: 0, achievements: "",
+    boost_energy_day: null, boost_energy_count: 0, boost_energy_at: 0,
+    turbo_day: null, turbo_count: 0, turbo_until: 0,
     created_at: now, version: 0,
   };
 }
@@ -95,6 +127,7 @@ export function touchStreak(p, now) {
     p.streak = 1;
   }
   p.streak_day = today;
+  p.best_streak = Math.max(p.best_streak, p.streak); // для досягнень: згорілий вогник їх не забирає
   return { lost };
 }
 export const dailyReward = (streak) => STREAK_REWARDS[Math.min(Math.max(streak, 1), STREAK_REWARDS.length) - 1];
@@ -121,16 +154,70 @@ export function settle(p, now) {
   return gain;
 }
 
-// Тапи від клієнта: не більше, ніж є енергії, і не швидше, ніж одним пальцем. → скільки зараховано.
-export function applyTaps(p, taps, now) {
+// Тапи від клієнта: не більше, ніж є енергії, і не швидше, ніж одним пальцем. turboTaps — зроблені під
+// час турбо: енергії не витрачають і дають ×5, але лише в межах вікна турбо. → скільки зараховано (усього).
+export function applyTaps(p, taps, now, turboTaps = 0) {
   settle(p, now);
   const from = Math.max(p.tap_at, now - TAP_WINDOW_MS);
-  const byTime = Math.floor(((now - from) / 1000) * TAPS_PER_SECOND);
-  const accepted = Math.max(0, Math.min(Math.floor(taps) || 0, Math.floor(p.energy), byTime, MAX_TAPS_PER_SYNC));
-  p.energy -= accepted;
-  p.tap_at = from + (accepted / TAPS_PER_SECOND) * 1000; // використаний час «відра»
-  give(p, accepted * value("tap", p.tap_lvl));
-  return accepted;
+  const byTime = Math.min(Math.floor(((now - from) / 1000) * TAPS_PER_SECOND), MAX_TAPS_PER_SYNC);
+  const turboStart = p.turbo_until - BOOSTS.turbo.seconds * 1000;
+  const turboMs = Math.max(0, Math.min(now, p.turbo_until + TURBO_GRACE_MS) - Math.max(from, turboStart));
+  const turbo = Math.max(0, Math.min(Math.floor(turboTaps) || 0, Math.floor((turboMs / 1000) * TAPS_PER_SECOND), byTime));
+  const normal = Math.max(0, Math.min(Math.floor(taps) || 0, Math.floor(p.energy), byTime - turbo));
+  p.energy -= normal;
+  p.tap_at = from + ((normal + turbo) / TAPS_PER_SECOND) * 1000; // використаний час «відра»
+  p.total_taps += normal + turbo;
+  give(p, (normal + turbo * BOOSTS.turbo.multiplier) * value("tap", p.tap_lvl));
+  return normal + turbo;
+}
+
+// Бусти: → null або "limit" | "early" | "full" | "active" | "unknown".
+export function useBoost(p, kind, now) {
+  settle(p, now);
+  const today = kyivDay(now);
+  if (kind === "energy") {
+    if (p.boost_energy_day !== today) Object.assign(p, { boost_energy_day: today, boost_energy_count: 0 });
+    if (p.boost_energy_count >= BOOSTS.energy.perDay) return "limit";
+    if (now - p.boost_energy_at < BOOSTS.energy.cooldownMinutes * MINUTE) return "early";
+    const max = value("energy", p.energy_lvl);
+    if (p.energy >= max - 1) return "full";
+    p.energy = max;
+    p.boost_energy_count += 1;
+    p.boost_energy_at = now;
+    return null;
+  }
+  if (kind === "turbo") {
+    if (p.turbo_day !== today) Object.assign(p, { turbo_day: today, turbo_count: 0 });
+    if (p.turbo_count >= BOOSTS.turbo.perDay) return "limit";
+    if (p.turbo_until > now) return "active";
+    p.turbo_until = now + BOOSTS.turbo.seconds * 1000;
+    p.turbo_count += 1;
+    return null;
+  }
+  return "unknown";
+}
+
+// ---- Досягнення ----
+const levels = (p) => ["tap", "energy", "regen", "passive"].map((k) => p[`${k}_lvl`]);
+const STATS = {
+  taps: (p) => p.total_taps, earned: (p) => p.earned, invited: (p) => p.invited, bestStreak: (p) => p.best_streak,
+  chickens: (p) => p.chickens_total, ciphers: (p) => p.ciphers_total,
+  maxUpgrade: (p) => Math.max(...levels(p)), minUpgrade: (p) => Math.min(...levels(p)),
+};
+const claimed = (p) => new Set(p.achievements ? p.achievements.split(",") : []);
+
+// → null або "done" | "not_yet" | "unknown".
+export function claimAchievement(p, id, now) {
+  settle(p, now);
+  const a = ACHIEVEMENTS.find((x) => x.id === id);
+  if (!a) return "unknown";
+  const have = claimed(p);
+  if (have.has(id)) return "done";
+  if (STATS[a.stat](p) < a.goal) return "not_yet";
+  have.add(id);
+  p.achievements = [...have].join(",");
+  give(p, a.reward);
+  return null;
 }
 
 export const upgradeCost = (kind, level) => (level >= MAX_LEVEL ? null : UPGRADES[kind].costs[level - 1]);
@@ -190,6 +277,7 @@ export function claimChicken(p, now) {
   if (now - p.chicken_at < CHICKEN.cooldownMinutes * MINUTE) return "early";
   p.chicken_at = now;
   p.chicken_count += 1;
+  p.chickens_total += 1;
   give(p, CHICKEN.reward);
   return null;
 }
@@ -210,6 +298,7 @@ export function claimCipher(p, now, correct) {
     return "wrong";
   }
   p.cipher_day = today;
+  p.ciphers_total += 1;
   give(p, CIPHER.reward);
   return null;
 }
@@ -257,6 +346,19 @@ export function publicState(p, now) {
       reward: CHICKEN.reward, readyAt: p.chicken_at + CHICKEN.cooldownMinutes * MINUTE,
       left: CHICKEN.perDay - (p.chicken_day === today ? p.chicken_count : 0),
     },
+    boosts: {
+      energy: {
+        perDay: BOOSTS.energy.perDay, readyAt: p.boost_energy_at + BOOSTS.energy.cooldownMinutes * MINUTE,
+        left: BOOSTS.energy.perDay - (p.boost_energy_day === today ? p.boost_energy_count : 0),
+      },
+      turbo: {
+        perDay: BOOSTS.turbo.perDay, seconds: BOOSTS.turbo.seconds, multiplier: BOOSTS.turbo.multiplier, until: p.turbo_until,
+        left: BOOSTS.turbo.perDay - (p.turbo_day === today ? p.turbo_count : 0),
+      },
+    },
+    achievements: ACHIEVEMENTS.map((a) => ({
+      id: a.id, goal: a.goal, reward: a.reward, progress: Math.min(STATS[a.stat](p), a.goal), done: claimed(p).has(a.id),
+    })),
     invited: p.invited, refBonus: p.ref_bonus,
     rewards: { friend: REWARDS.friend, friendPremium: REWARDS.friendPremium, welcome: REWARDS.welcome },
     now,

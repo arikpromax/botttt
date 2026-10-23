@@ -256,6 +256,33 @@
     @keyframes bob { from { transform: translateY(-5px); } to { transform: translateY(7px); } }
     @keyframes flap { from { transform: rotate(8deg); } to { transform: rotate(-38deg); } }
 
+    /* ---- Бусти й досягнення ---- */
+    .boost-btn { position: absolute; top: 10px; right: 10px; z-index: 4; display: flex; align-items: center; gap: 6px; padding: 8px 12px;
+      border-radius: 14px; background: rgba(4, 12, 30, 0.72); font-weight: 700; font-size: 13.5px; }
+    .boost-btn .icon { width: 18px; height: 18px; color: var(--gold); }
+    .field.turbo .ring { border-color: rgba(255, 200, 61, 0.95); animation: turbo-glow 0.45s ease-in-out infinite alternate;
+      box-shadow: 0 0 0 10px rgba(255, 170, 40, 0.2), 0 0 80px rgba(255, 170, 40, 0.8), inset 0 0 40px rgba(255, 190, 60, 0.5); }
+    @keyframes turbo-glow { to { opacity: 0.6; } }
+    .field.turbo .per-tap { background: linear-gradient(90deg, #ff9a3c, #ff5a1a); }
+    .float.turbo { color: #ffd257; font-size: 30px; }
+    .boost-row { text-align: left; }
+    .boost-row .small-btn[disabled] { background: #1b2c55; color: var(--hint); }
+    .badges { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .badge-card { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px 12px; text-align: center; }
+    .badge-card b { font-size: 14.5px; line-height: 1.2; }
+    .badge-card .meta { font-size: 12px; color: var(--hint); min-height: 30px; }
+    .badge-card .bar { width: 100%; }
+    .badge-card .count { font-size: 11.5px; color: var(--hint); }
+    .badge { width: 66px; height: 66px; border-radius: 50%; display: grid; place-items: center; margin-bottom: 2px;
+      background: radial-gradient(circle at 34% 28%, rgba(255, 255, 255, 0.55), transparent 46%), var(--tier);
+      box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.14), 0 6px 18px rgba(0, 0, 0, 0.35); }
+    .badge .icon { width: 32px; height: 32px; color: #1a2340; stroke-width: 2.2; }
+    .badge svg.flame-ic { width: 36px; height: 36px; }
+    .badge-card.locked .badge { filter: grayscale(1) brightness(0.55); }
+    .badge-card.ready { border-color: rgba(255, 200, 61, 0.7); box-shadow: 0 0 22px rgba(255, 200, 61, 0.25); }
+    .tabbar button { position: relative; }
+    .dot { position: absolute; top: 3px; left: calc(50% + 8px); width: 9px; height: 9px; border-radius: 50%; background: var(--red); border: 2px solid #071026; }
+
     .loading { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: var(--bg); transition: opacity 0.3s; }
     .loading.off { opacity: 0; pointer-events: none; }
     .loading svg { width: 84px; height: 84px; animation: pulse 1s ease-in-out infinite alternate; }
@@ -285,6 +312,9 @@
     <path d="M12.1 10.5c.2 1.6 2.4 2.5 2.4 4.9A2.5 2.5 0 0 1 12 18a2.5 2.5 0 0 1-2.5-2.5c0-1.3.7-2.2 1.3-2.7.1.8.5 1.3 1 1.4-.2-1.3.1-2.6.3-3.7z" fill="#fff3b0"/>
   </symbol>
   <symbol id="i-league" viewBox="0 0 24 24"><path d="M12 2.8l7.5 3v5.6c0 4.6-3.2 8-7.5 9.8-4.3-1.8-7.5-5.2-7.5-9.8V5.8z" fill="currentColor" fill-opacity=".22"/><path d="M12 7.5l1.4 2.9 3.1.4-2.3 2.2.6 3.1-2.8-1.5-2.8 1.5.6-3.1-2.3-2.2 3.1-.4z" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-rocket" viewBox="0 0 24 24"><path d="M14.2 4.6C16.8 3.4 20 3.5 20 3.5s.1 3.2-1.1 5.8l-6.2 6.2-4.4-4.4z"/><path d="M8.6 10.9l-3.3.4-2 2 4.3 1.3M13.1 15.4l-.4 3.3-2 2-1.3-4.3M15.6 8.4h.01M6.2 17.8c-1.2 1.2-1.7 2.9-1.7 2.9s1.7-.5 2.9-1.7"/></symbol>
+  <symbol id="i-egg" viewBox="0 0 24 24"><path d="M12 3c3.6 0 6.5 5.6 6.5 10.3A6.4 6.4 0 0 1 12 20.5a6.4 6.4 0 0 1-6.5-7.2C5.5 8.6 8.4 3 12 3z"/></symbol>
+  <symbol id="i-crown" viewBox="0 0 24 24"><path d="M4 8l4.2 3.6L12 5l3.8 6.6L20 8l-1.8 10H5.8z"/><path d="M6 21h12"/></symbol>
   <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15.5" r="4"/><path d="M11 12.6L19.5 4M16.5 7l2.5 2.5M14.2 9.3l2 2"/></symbol>
   <symbol id="i-game" viewBox="0 0 24 24"><path d="M7 10h4M9 8v4M15.5 11h.01M17.8 9h.01"/><path d="M6.8 5.5h10.4A4.8 4.8 0 0 1 22 10.3v2.9c0 3.6-3.9 5.2-6 2.9l-1.3-1.4a2 2 0 0 0-1.5-.7h-2.4a2 2 0 0 0-1.5.7L8 16.1c-2.1 2.3-6 .7-6-2.9v-2.9a4.8 4.8 0 0 1 4.8-4.8z"/></symbol>
   <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 3.5l7 7h-4.2v6.2H9.2v-6.2H5z"/><path d="M8 20.5h8"/></symbol>
@@ -379,6 +409,7 @@
       <div class="ring"></div>
       <button class="big-coin" id="tap-coin" aria-label="Тапнути монету"><svg><use href="#coin"/></svg></button>
       <div class="per-tap" id="g-pertap">+1 монета за тап</div>
+      <button class="boost-btn" id="boosts"><svg class="icon"><use href="#i-rocket"/></svg>Бусти</button>
     </div>
     <template id="chicken-tpl">
       <button class="chicken" aria-label="Зловити курку"><div class="bob"><svg viewBox="0 0 80 60">
@@ -455,6 +486,7 @@
       <div class="card stat"><span class="tile tone-green"><svg class="icon"><use href="#i-gift"/></svg></span><div><div class="sub">Отримано бонусів</div><b id="p-bonus">0</b></div></div>
     </div>
     <div class="card menu">
+      <button data-page="achievements"><span class="tile tone-gold"><svg class="icon"><use href="#i-crown"/></svg></span><span class="grow"><b>Досягнення</b><div class="hint" id="p-ach">0 із 17</div></span><svg class="icon chev"><use href="#i-chev"/></svg></button>
       <button data-page="features"><span class="tile tone-blue"><svg class="icon"><use href="#i-convert"/></svg></span><span class="grow"><b>Що вміє бот</b><div class="hint">Конвертер: TikTok, фото, PDF, QR, валюти</div></span><svg class="icon chev"><use href="#i-chev"/></svg></button>
       <button data-page="payouts"><span class="tile tone-teal"><svg class="icon"><use href="#i-wallet"/></svg></span><span class="grow"><b>Виплати TON</b><div class="hint">Поки вимкнено</div></span><svg class="icon chev"><use href="#i-chev"/></svg></button>
       <button id="channel"><span class="tile tone-violet"><svg class="icon"><use href="#i-megaphone"/></svg></span><span class="grow"><b>Канал AraWebsite</b><div class="hint">Новини бота й гри</div></span><svg class="icon chev"><use href="#i-chev"/></svg></button>
@@ -487,6 +519,16 @@
     <div class="card feature"><span class="tile tone-violet"><svg class="icon"><use href="#i-qr"/></svg></span><div><b>QR-код і латиниця</b><p>Надішли <em>текст чи посилання</em> — отримаєш QR-код. Український текст — ще й <em>латиницею, як у закордонному паспорті</em>: Ярослав → Yaroslav.</p></div></div>
     <div class="card feature"><span class="tile tone-teal"><svg class="icon"><use href="#i-money"/></svg></span><div><b>Курс валют НБУ</b><p>Напиши <em>«100 usd»</em>, <em>«50 євро»</em> чи <em>«1000 грн в злоті»</em> — переведу за офіційним курсом. <em>«Курс»</em> — курс на сьогодні.</p></div></div>
     <div style="margin-top:16px"><button class="btn" id="to-bot"><svg class="icon"><use href="#i-chat"/></svg>Перейти в чат із ботом</button></div>
+  </main>
+</div>
+
+<!-- Сторінка «Досягнення» -->
+<div class="page" id="page-achievements">
+  <main>
+    <button class="back" data-close><svg class="icon"><use href="#i-chev"/></svg>Назад</button>
+    <div class="title"><span class="tile tone-gold"><svg class="icon"><use href="#i-crown"/></svg></span><h1>Досягнення</h1></div>
+    <p class="lead">Виконуй — і забирай нагороди. Значки лишаються в тебе назавжди.</p>
+    <div class="badges" id="badges"></div>
   </main>
 </div>
 
@@ -574,29 +616,41 @@
     return p;
   }
 
+  let pendingTurbo = 0; // тапи під час турбо (×5, без енергії), ще не надіслані
+  let turboEnd = 0; // коли закінчиться турбо — за годинником телефона
+  let adoptedAt = 0; // коли прийшов стан (S.now — час сервера в ту мить)
+  const serverNow = () => S.now + (Date.now() - adoptedAt);
+  const turboOn = () => Date.now() < turboEnd;
+  const turboGain = () => S.perTap * S.boosts.turbo.multiplier;
+
   // Стан із сервера + тапи, які людина зробила, поки йшов запит.
   function adopt(state) {
     S = { ...state };
+    adoptedAt = Date.now();
     passiveF = 0;
-    S.coins += pending * S.perTap;
-    S.earned += pending * S.perTap;
+    turboEnd = S.boosts.turbo.until > S.now ? adoptedAt + (S.boosts.turbo.until - S.now) : 0;
+    const extra = pending * S.perTap + pendingTurbo * turboGain();
+    S.coins += extra;
+    S.earned += extra;
     S.energy = Math.max(0, S.energy - pending);
     render();
   }
 
   async function flush() {
-    if (!pending || !S) return;
+    if ((!pending && !pendingTurbo) || !S) return;
     const taps = pending;
-    pending = 0;
-    const res = await call("tap", { taps }).catch(() => null);
+    const turboTaps = pendingTurbo;
+    pending = pendingTurbo = 0;
+    const res = await call("tap", { taps, turboTaps }).catch(() => null);
     if (res?.state) adopt(res.state);
-    else pending += taps; // немає зв'язку — надішлемо пізніше
+    else (pending += taps), (pendingTurbo += turboTaps); // немає зв'язку — надішлемо пізніше
   }
   setInterval(flush, 3000);
   document.addEventListener("visibilitychange", () => document.hidden && flush());
 
   // Енергія й пасивний дохід ростуть на очах; сервер рахує те саме й поправляє при синхронізації.
   let last = performance.now();
+  let wasTurbo = false;
   setInterval(() => {
     const now = performance.now();
     const dt = (now - last) / 1000;
@@ -604,8 +658,17 @@
     if (!S) return;
     S.energy = Math.min(S.energyMax, S.energy + S.regen * dt);
     passiveF += (S.passive * dt) / 3600;
+    const turbo = turboOn();
+    $("field").classList.toggle("turbo", turbo);
+    if (turbo || wasTurbo) $("g-pertap").textContent = perTapLabel();
+    if (wasTurbo && !turbo) flush(); // турбо скінчилось — одразу віддаємо турбо-тапи серверу
+    wasTurbo = turbo;
     renderLive();
   }, 250);
+
+  const perTapLabel = () => turboOn()
+    ? `Турбо ×${S.boosts.turbo.multiplier} · ще ${Math.ceil((turboEnd - Date.now()) / 1000)} с`
+    : `+${S.perTap} ${S.perTap === 1 ? "монета" : S.perTap < 5 ? "монети" : "монет"} за тап`;
 
   // ---- Тапи ----
   // Лише одним пальцем: другий палець, поки перший на монеті, не рахується; і не частіше, ніж
@@ -624,33 +687,35 @@
     lastDown = e.timeStamp;
     if (e.timeStamp - lastTap < MIN_TAP_MS) return;
     lastTap = e.timeStamp;
-    if (S.energy < 1) {
+    const turbo = turboOn();
+    if (!turbo && S.energy < 1) {
       haptic("error");
       coinEl.classList.remove("shake");
       void coinEl.offsetWidth;
       coinEl.classList.add("shake");
-      toast("Енергія скінчилась — вона відновлюється сама");
+      toast("Енергія скінчилась — вона відновлюється сама (або візьми буст)");
       return;
     }
-    S.energy -= 1;
-    S.coins += S.perTap;
-    S.earned += S.perTap;
-    pending++;
+    const gain = turbo ? turboGain() : S.perTap;
+    if (turbo) pendingTurbo++;
+    else (S.energy -= 1), pending++;
+    S.coins += gain;
+    S.earned += gain;
     const r = coinEl.getBoundingClientRect();
     const dx = (e.clientX - r.left) / r.width - 0.5;
     const dy = (e.clientY - r.top) / r.height - 0.5;
     coinEl.style.transform = `perspective(600px) rotateX(${-dy * 22}deg) rotateY(${dx * 22}deg) scale(.96)`;
     setTimeout(() => (coinEl.style.transform = ""), 90);
     const f = document.createElement("div");
-    f.className = "float";
-    f.textContent = `+${S.perTap}`;
+    f.className = turbo ? "float turbo" : "float";
+    f.textContent = `+${gain}`;
     f.style.left = `${e.clientX}px`;
     f.style.top = `${e.clientY}px`;
     document.body.append(f);
     setTimeout(() => f.remove(), 900);
     haptic("light");
     renderLive();
-    if (pending >= 150) flush();
+    if (pending + pendingTurbo >= 150) flush();
   }
   coinEl.addEventListener("pointerdown", tap);
   const release = (e) => e.pointerId === finger && (finger = null);
@@ -723,11 +788,12 @@
     $("g-flame").classList.toggle("off", !S.streak);
     $("g-regen").textContent = `+${dec(S.regen)} щосекунди`;
     $("g-passive").textContent = `${fmt(S.passive)}/год`;
-    $("g-pertap").textContent = `+${S.perTap} ${S.perTap === 1 ? "монета" : S.perTap < 5 ? "монети" : "монет"} за тап`;
+    $("g-pertap").textContent = perTapLabel();
     renderUpgrades();
     renderTasks();
     renderFriendsHeader();
     renderProfile();
+    renderAchievements();
   }
 
   // ---- Покращення ----
@@ -1024,6 +1090,110 @@
   }
   $("g-league").addEventListener("click", openLeagues);
 
+  // ---- Бусти ----
+  function openBoosts() {
+    const e = S.boosts.energy, t = S.boosts.turbo;
+    const mins = Math.ceil((e.readyAt - serverNow()) / 60_000);
+    const energyBtn = e.left <= 0 ? ["Завтра", true] : mins > 0 ? [`Через ${mins} хв`, true]
+      : S.energy >= S.energyMax - 1 ? ["Уже повна", true] : ["Заповнити", false];
+    const turboBtn = turboOn() ? ["Працює", true] : t.left <= 0 ? ["Завтра", true] : ["Увімкнути", false];
+    const row = (kind, tone, ic, title, about, left, perDay, [label, off]) => `
+      <div class="card row boost-row"><span class="tile ${tone}">${icon(ic)}</span>
+        <span class="grow"><b>${title}</b><div class="meta">${about}</div><div class="meta">Сьогодні: ${left} із ${perDay}</div></span>
+        <button class="small-btn" data-boost="${kind}" ${off ? "disabled" : ""}>${label}</button></div>`;
+    openSheet(`
+      <span class="tile hero-tile tone-gold">${icon("i-rocket")}</span>
+      <h3>Бусти</h3>
+      <p>Безкоштовні, щодня оновлюються.</p>
+      <div class="list">
+        ${row("energy", "tone-green", "i-battery", "Повна енергія", `Заповнює енергію до максимуму. Раз на годину.`, e.left, e.perDay, energyBtn)}
+        ${row("turbo", "tone-orange", "i-bolt", `Турбо ×${t.multiplier}`, `${t.seconds} секунд кожен тап ×${t.multiplier} і без енергії.`, t.left, t.perDay, turboBtn)}
+      </div>`);
+  }
+  $("boosts").addEventListener("click", () => (haptic("select"), openBoosts()));
+  $("sheet-body").addEventListener("click", async (e) => {
+    const kind = e.target.closest("[data-boost]")?.dataset.boost;
+    if (!kind) return;
+    e.target.disabled = true;
+    await flush();
+    const res = await call("boost", { kind }).catch(() => null);
+    if (res?.state) adopt(res.state);
+    if (res?.status === 200) {
+      haptic("success");
+      closeAll();
+      toast(kind === "turbo" ? `Турбо! ${S.boosts.turbo.seconds} секунд кожен тап ×${S.boosts.turbo.multiplier}` : "Енергія повна — тапай!");
+    } else {
+      haptic("error");
+      toast({ limit: "На сьогодні все — завтра знову", early: "Ще рано — зачекай трохи", full: "Енергія й так повна", active: "Турбо вже працює" }[res?.error]
+        ?? "Не вдалося — спробуй ще раз");
+      openBoosts();
+    }
+  });
+
+  // ---- Досягнення ----
+  const TIERS = ["#d8955c", "#c9d3de", "#ffc83d", "#c58cff"];
+  const ACH = {
+    tap1k: ["Розминка", "Зробити 1 000 тапів", "i-hand", 0],
+    tap10k: ["Залізний палець", "Зробити 10 000 тапів", "i-hand", 1],
+    tap100k: ["Тапо-машина", "Зробити 100 000 тапів", "i-hand", 2],
+    earn100k: ["Сто тисяч", "Заробити 100 000 монет", "i-coins", 1],
+    earn1m: ["Мільйонер", "Заробити 1 000 000 монет", "i-coins", 2],
+    friend1: ["Перший друг", "Запросити друга", "i-users", 0],
+    friend5: ["Компанія", "Запросити 5 друзів", "i-users", 1],
+    friend10: ["Душа компанії", "Запросити 10 друзів", "i-users", 2],
+    streak3: ["Іскра", "Вогник 3 дні поспіль", "flame", 0],
+    streak7: ["Вогонь", "Вогник 7 днів поспіль", "flame", 1],
+    streak30: ["Вічний вогонь", "Вогник 30 днів поспіль", "flame", 2],
+    chicken1: ["Перша курка", "Зловити курку", "i-egg", 0],
+    chicken25: ["Ловець курей", "Зловити 25 курок", "i-egg", 2],
+    cipher1: ["Дешифратор", "Розгадати шифр дня", "i-key", 0],
+    cipher10: ["Криптограф", "Розгадати 10 шифрів", "i-key", 2],
+    upgrade5: ["Прокачка", "Будь-яке покращення до 5 рівня", "i-up", 1],
+    allmax: ["Фермер-профі", "Усі покращення на максимум", "i-crown", 3],
+  };
+  let readyBefore = null;
+
+  function renderAchievements() {
+    const list = S.achievements.filter((a) => ACH[a.id]);
+    const ready = list.filter((a) => !a.done && a.progress >= a.goal);
+    const done = list.filter((a) => a.done).length;
+    $("p-ach").textContent = ready.length ? `Можна забрати: ${ready.length}` : `${done} із ${list.length}`;
+    const profileTab = document.querySelector("[data-tab=profile]");
+    profileTab.querySelector(".dot")?.remove();
+    if (ready.length) profileTab.insertAdjacentHTML("beforeend", `<span class="dot"></span>`);
+    if (readyBefore !== null && ready.length > readyBefore) toast("Нове досягнення! Забери нагороду в Профілі");
+    readyBefore = ready.length;
+    // Спершу ті, що можна забрати, потім — у процесі, наприкінці — отримані.
+    const order = (a) => (!a.done && a.progress >= a.goal ? 0 : a.done ? 2 : 1);
+    $("badges").innerHTML = [...list].sort((a, b) => order(a) - order(b)).map((a) => {
+      const [title, about, ic, tier] = ACH[a.id];
+      const can = !a.done && a.progress >= a.goal;
+      const art = ic === "flame" ? `<svg class="flame-ic"><use href="#flame"/></svg>` : icon(ic);
+      const foot = a.done ? `<span class="done-tag">${icon("i-check")}Отримано</span>`
+        : can ? `<button class="small-btn" data-ach="${a.id}">Забрати +${fmt(a.reward)}</button>`
+        : `<span class="bar"><i style="width:${(a.progress / a.goal) * 100}%"></i></span>
+           <span class="count">${fmt(a.progress)} / ${fmt(a.goal)} · +${fmt(a.reward)}</span>`;
+      return `<div class="card badge-card ${a.done ? "" : can ? "ready" : "locked"}">
+        <span class="badge" style="--tier:${TIERS[tier]}">${art}</span><b>${title}</b><div class="meta">${about}</div>${foot}</div>`;
+    }).join("");
+  }
+
+  $("badges").addEventListener("click", async (e) => {
+    const id = e.target.closest("[data-ach]")?.dataset.ach;
+    if (!id) return;
+    e.target.disabled = true;
+    await flush();
+    const res = await call("achievement", { id }).catch(() => null);
+    if (res?.state) adopt(res.state);
+    if (res?.status === 200) {
+      haptic("success");
+      toast(`${ACH[id][0]}: +${fmt(S.achievements.find((a) => a.id === id).reward)} монет`);
+    } else {
+      haptic("error");
+      toast("Не вдалося — спробуй ще раз");
+    }
+  });
+
   // ---- Курка ----
   // Пролітає над фермою нечасто: сервер дозволяє не частіше ніж раз на 15 хв (і 8 разів на день),
   // а ми ще й чекаємо випадкові 1–10 хв понад це. Зловив — +300.
@@ -1126,6 +1296,13 @@
       streak: 3, streakRewards: [500, 1000, 1500, 2500, 3500, 5000, 7500],
       tasks: { daily: { reward: 1500, done: false }, channel: { reward: 1000, done: false }, friends3: { reward: 2500, done: false, progress: 1, target: 3 } },
       cipher: { reward: 3000, done: false, triesLeft: 5 }, chicken: { reward: 300, readyAt: now, left: 8 },
+      boosts: { energy: { perDay: 3, readyAt: now, left: 3 }, turbo: { perDay: 2, seconds: 20, multiplier: 5, until: 0, left: 2 } },
+      achievements: [
+        ["tap1k", 1000, 1000, 1000], ["tap10k", 10000, 5000, 1840], ["tap100k", 100000, 25000, 1840], ["earn100k", 100000, 5000, 12450],
+        ["earn1m", 1000000, 50000, 12450], ["friend1", 1, 1000, 1], ["friend5", 5, 5000, 1], ["friend10", 10, 15000, 1],
+        ["streak3", 3, 1500, 3], ["streak7", 7, 7500, 3], ["streak30", 30, 30000, 3], ["chicken1", 1, 500, 0], ["chicken25", 25, 5000, 0],
+        ["cipher1", 1, 1000, 0], ["cipher10", 10, 10000, 0], ["upgrade5", 5, 10000, 1], ["allmax", 10, 100000, 1],
+      ].map(([id, goal, reward, progress]) => ({ id, goal, reward, progress, done: id === "friend1" })),
       rewards: { friend: 1000, friendPremium: 2500, welcome: 500 }, at: now,
     };
     const d = demo;
@@ -1150,10 +1327,26 @@
     if (path === "me") return out({ refLink: `${BOT_LINK}?startapp=ref_0` });
     if (path === "tap") {
       const n = Math.min(body.taps, Math.floor(d.energy));
+      const turbo = d.boosts.turbo.until > now - 2000 ? body.turboTaps || 0 : 0;
       d.energy -= n;
-      d.coins += n * d.perTap;
-      d.earned += n * d.perTap;
-      return out({ accepted: n });
+      d.coins += (n + turbo * 5) * d.perTap;
+      d.earned += (n + turbo * 5) * d.perTap;
+      return out({ accepted: n + turbo });
+    }
+    if (path === "boost") {
+      const b = d.boosts[body.kind];
+      if (b.left <= 0) return out({ error: "limit" }, 409);
+      b.left -= 1;
+      if (body.kind === "energy") (d.energy = d.energyMax), (b.readyAt = now + 3_600_000);
+      else b.until = now + 20_000;
+      return out();
+    }
+    if (path === "achievement") {
+      const a = d.achievements.find((x) => x.id === body.id);
+      a.done = true;
+      d.coins += a.reward;
+      d.earned += a.reward;
+      return out();
     }
     if (path === "upgrade") {
       const x = d.upgrades[body.kind];

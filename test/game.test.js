@@ -282,3 +282,68 @@ describe("гра в боті", () => {
     assert.equal(plain.payload.reply_markup, undefined);
   });
 });
+
+describe("гра: бусти й досягнення", () => {
+  it("повна енергія: лише коли енергія не повна, раз на годину, 3 рази на день", async () => {
+    const { useBoost } = await import("../src/game/rules.js");
+    const p = newPlayer(ANNA, T0);
+    assert.equal(useBoost(p, "energy", T0 + 3_600_000), "full", "повну не заповнюємо — щоб буст не пропав");
+    const drain = (at) => Object.assign(p, { energy: 10, energy_at: at }); // натапав — енергії майже немає
+    let t = T0 + 3_600_000;
+    for (let i = 0; i < 3; i++) {
+      drain(t);
+      assert.equal(useBoost(p, "energy", t), null);
+      assert.equal(Math.floor(p.energy), 500);
+      drain(t + 60_000);
+      assert.equal(useBoost(p, "energy", t + 60_000), i < 2 ? "early" : "limit", "раз на годину");
+      t += 3_600_000;
+    }
+    drain(t);
+    assert.equal(useBoost(p, "energy", t), "limit", "3 на день");
+  });
+
+  it("турбо: 20 с кожен тап ×5 без енергії, лише у вікні турбо, 2 рази на день", async () => {
+    const { useBoost } = await import("../src/game/rules.js");
+    const p = newPlayer(ANNA, T0);
+    assert.equal(useBoost(p, "turbo", T0 + 1000), null);
+    assert.equal(useBoost(p, "turbo", T0 + 2000), "active");
+    assert.equal(applyTaps(p, 0, T0 + 4000, 36), 36, "3 с турбо — 36 тапів");
+    assert.equal(p.coins, 36 * 5);
+    assert.equal(p.energy, 500, "енергія не витрачається");
+    assert.equal(applyTaps(p, 0, T0 + 40_000, 50), 0, "турбо скінчилось — турбо-тапи не зараховуються");
+    assert.equal(useBoost(p, "turbo", T0 + 60_000), null);
+    assert.equal(useBoost(p, "turbo", T0 + 120_000), "limit");
+  });
+
+  it("досягнення: забрати можна, лише коли виконано, і лише раз", async () => {
+    const { claimAchievement, publicState } = await import("../src/game/rules.js");
+    const p = newPlayer(ANNA, T0);
+    assert.equal(claimAchievement(p, "tap1k", T0), "not_yet");
+    p.total_taps = 1000;
+    assert.equal(claimAchievement(p, "tap1k", T0), null);
+    assert.equal(p.coins, 1000);
+    assert.equal(claimAchievement(p, "tap1k", T0), "done");
+    assert.equal(claimAchievement(p, "nope", T0), "unknown");
+    const tap10k = publicState(p, T0).achievements.find((a) => a.id === "tap10k");
+    assert.deepEqual(tap10k, { id: "tap10k", goal: 10_000, reward: 5_000, progress: 1000, done: false });
+    p.streak = 5;
+    p.best_streak = 7;
+    assert.equal(claimAchievement(p, "streak7", T0), null, "найдовша серія — навіть якщо вогник уже згорів");
+  });
+
+  it("бусти й досягнення через API, лічильник тапів", async () => {
+    const g = game();
+    await g.call("me", ANNA);
+    g.wait(3000);
+    await g.call("tap", ANNA, { taps: 30 });
+    const turbo = await g.call("boost", ANNA, { kind: "turbo" });
+    assert.equal(turbo.status, 200);
+    assert.equal(turbo.state.boosts.turbo.left, 1);
+    g.wait(2000);
+    const fast = await g.call("tap", ANNA, { taps: 0, turboTaps: 24 });
+    assert.equal(fast.accepted, 24);
+    assert.equal(fast.state.coins, 30 + 24 * 5);
+    assert.equal(g.store.rows.get(501).total_taps, 54);
+    assert.equal((await g.call("achievement", ANNA, { id: "tap1k" })).error, "not_yet");
+  });
+});

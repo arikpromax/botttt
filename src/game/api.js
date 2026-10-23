@@ -3,8 +3,8 @@
 import { verifyInitData } from "./auth.js";
 import { isCipher } from "./cipher.js";
 import {
-  REWARDS, applyTaps, buyUpgrade, claimChicken, claimCipher, claimTask, joinByInvite, kyivDay, newPlayer, publicState,
-  settle, touchStreak,
+  REWARDS, applyTaps, buyUpgrade, claimAchievement, claimChicken, claimCipher, claimTask, joinByInvite, kyivDay, newPlayer,
+  publicState, settle, touchStreak, useBoost,
 } from "./rules.js";
 
 const json = (data, status = 200) =>
@@ -65,7 +65,11 @@ export function gameApi({ store, token, checkMember, botUsername, secret, clock 
         refLink: `https://t.me/${botUsername}?startapp=ref_${out.p.id}`,
       });
     },
-    tap: (auth, body) => mutate(auth, (p, now) => ({ accepted: applyTaps(p, Number(body.taps) || 0, now) })).then((out) => reply(out)),
+    tap: (auth, body) => mutate(auth, (p, now) => ({
+      accepted: applyTaps(p, Number(body.taps) || 0, now, Number(body.turboTaps) || 0),
+    })).then((out) => reply(out)),
+    boost: (auth, body) => mutate(auth, (p, now) => refusal(useBoost(p, String(body.kind), now))).then((out) => reply(out)),
+    achievement: (auth, body) => mutate(auth, (p, now) => refusal(claimAchievement(p, String(body.id), now))).then((out) => reply(out)),
     upgrade: (auth, body) => mutate(auth, (p, now) => refusal(buyUpgrade(p, String(body.kind), now))).then((out) => reply(out)),
     async task(auth, body) {
       const id = String(body.id);

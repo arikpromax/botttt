@@ -6,7 +6,8 @@ const MUTABLE = [
   "name", "username", "photo", "premium", "coins", "earned", "tap_lvl", "energy_lvl", "regen_lvl", "passive_lvl",
   "energy", "energy_at", "passive_at", "tap_at", "referrer", "ref_reward", "invited", "ref_bonus",
   "daily_day", "channel_done", "friends3_done", "streak", "streak_day", "chicken_at", "chicken_day", "chicken_count",
-  "cipher_day", "cipher_tries", "cipher_tries_day",
+  "cipher_day", "cipher_tries", "cipher_tries_day", "total_taps", "best_streak", "chickens_total", "ciphers_total",
+  "achievements", "boost_energy_day", "boost_energy_count", "boost_energy_at", "turbo_day", "turbo_count", "turbo_until",
 ];
 const ALL = ["id", ...MUTABLE, "created_at", "version"];
 
