@@ -1,12 +1,17 @@
 # Ara Converter
 
-Telegram-бот українською (@arawebsite_bot, назва «Ara Converter»). Працює на Cloudflare Workers; нічого не зберігає, лише альбоми фото на годину (D1).
+Telegram-бот українською (@arawebsite_bot, назва «Ara Converter»). Працює на Cloudflare Workers; надісланого не зберігає. У D1 — лише альбоми фото на годину і знеособлена статистика для /stats (хеші, 90 днів).
 
 - **TikTok без водяного знака**: посилання → відео (або фото зі слайдів) і окремо звук (`src/tiktok.js`). Джерела по черзі: tikwm.com (HD, але на спільних IP Cloudflare часто вичерпаний ліміт) → сторінка TikTok (до 720p; з версій бот вибирає ту, де кращий звук, `src/mp4.js`). Відео з віковими обмеженнями без входу в акаунт TikTok не віддає — бот пояснює. До 20 МБ Telegram бере файл сам, до 50 МБ бот передає потоком.
 - **Стиснення фото до вибраного розміру** (кнопки 3 МБ … 50 КБ або розмір у підписі, напр. «300 кб») через Cloudflare Images (`src/compress.js`): 5000 обробок на місяць безкоштовно, до 3 на фото; більший за оригінал файл не віддає.
 - **Фото → PDF**: одне фото або альбом (одне меню на альбом) — власний генератор, JPEG без перекодування (`src/pdf.js`).
+- **Скан документа**: фото чи альбом → чорно-білий PDF (Cloudflare Images: saturation 0, контраст, різкість).
+- **Стікер**: фото → WEBP 512 px, за бажанням без фону (segment: foreground) → у власний набір користувача `ara<id>_by_<бот>` (створюється від його імені, власник — він).
 - **Фото → JPG**: PNG, WEBP тощо, надіслані файлом (Cloudflare Images).
 - **Звук із відео** (до 20 МБ): доріжка AAC без перекодування в M4A (`src/audio.js`).
+- **Текст** → QR-код (`src/qr.js`) або латиниця за постановою КМУ № 55, як у паспорті (`src/translit.js`).
+- **Валюти**: «100 usd», «50 євро», «1000 грн в злоті», «курс» → за курсом НБУ (`src/currency.js`).
+- **/stats** — лише власнику (`OWNER_ID`): люди й дії за день / 7 / 30 днів (`src/stats.js`). Скільки людей на місяць, Telegram і сам показує в профілі бота.
 - **Обов'язкова підписка** на канал `CHANNEL` (@arawebsite): перевірка через Telegram, після підписки бот продовжує ту саму дію.
 
 Не плануємо: стиснення відео, YouTube, PDF ↔ Word.
@@ -15,10 +20,10 @@ Telegram-бот українською (@arawebsite_bot, назва «Ara Conver
 ```
 npm install
 npm test
-npx wrangler d1 migrations apply araconverter --remote   # таблиця для альбомів
+npx wrangler d1 migrations apply araconverter --remote   # таблиці для альбомів і статистики
 npx wrangler deploy
 npx wrangler secret put BOT_TOKEN
 npx wrangler secret put WEBHOOK_SECRET   # той самий, що в .env
-npm run webhook                          # Telegram → https://araconverter.msgsaver.workers.dev/webhook
+npm run webhook                          # вебхук, команди (власнику ще /stats) й опис бота
 ```
 Журнал наживо: `npx wrangler tail araconverter`. Сторінка застосунку («Open») і політика конфіденційності лежать у проєкті msgsaver (`placeholder/`).

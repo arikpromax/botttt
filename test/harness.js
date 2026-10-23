@@ -1,6 +1,7 @@
 // Бот із підробленими Telegram, tikwm і Cloudflare Images: перевіряємо логіку без мережі.
 import { createBot } from "../src/bot.js";
 import { memoryAlbums } from "../src/albums.js";
+import { memoryStats } from "../src/stats.js";
 
 // Найпростіший «JPEG»: SOI, JFIF, SOF0 з розмірами й 3 каналами, далі нулі до потрібного розміру.
 export function fakeJpeg(width = 800, height = 600, size = 2048) {
@@ -30,11 +31,13 @@ export function fakeImages({ width = 4000, height = 3000, base = 4 * MB, fail } 
     },
     input: () => {
       let w = width;
+      let transform = {};
       const chain = {
-        transform: (opts) => ((w = opts.width ?? w), chain),
-        output: async ({ quality }) => {
+        transform: (opts) => ((transform = opts), (w = opts.width ?? w), chain),
+        output: async ({ quality, format }) => {
           if (fail === "limit") throw new Error("IMAGES_TRANSFORM_ERROR 9422: limit");
-          calls.push({ width: w, quality });
+          if (fail === "segment" && transform.segment) throw new Error("segment is not supported");
+          calls.push({ width: w, quality, format, transform });
           const size = Math.round(base * (w / width) ** 2 * (quality / 100) ** 2);
           return { response: async () => new Response(fakeJpeg(w, Math.round((w * height) / width), size)) };
         },
@@ -71,9 +74,9 @@ export function fakeMp4({ audioKbps = 0 } = {}) {
 // fileBytes — що віддає Telegram, коли бот завантажує файл користувача: розмір (нулі) або самі байти.
 export function harness({
   channel = "@chan", tiktok, page, files = {}, images = fakeImages(), fileBytes = 4 * MB,
-  albums = memoryAlbums(), albumWait = 30,
+  albums = memoryAlbums(), albumWait = 30, stats = memoryStats(), ownerId = null,
 } = {}) {
-  const tg = { member: "member", calls: [], rejectUrl: false, nextId: 100 };
+  const tg = { member: "member", calls: [], rejectUrl: false, nextId: 100, stickerSets: new Map() };
   const fetches = [];
   const fakeFetch = async (url, init = {}) => {
     fetches.push({ url: String(url), headers: init.headers ?? {} });
@@ -89,7 +92,7 @@ export function harness({
     return new Response("not found", { status: 404 });
   };
 
-  const bot = createBot("123:TEST", { channel, images, albums, albumWait, fetch: fakeFetch, botInfo: BOT_INFO });
+  const bot = createBot("123:TEST", { channel, images, albums, albumWait, stats, ownerId, fetch: fakeFetch, botInfo: BOT_INFO });
   bot.api.config.use(async (prev, method, payload) => {
     tg.calls.push({ method, payload });
     const ok = (result) => ({ ok: true, result });
@@ -101,6 +104,18 @@ export function harness({
     }
     if (tg.rejectCover && payload.cover) {
       return { ok: false, error_code: 400, description: "Bad Request: wrong cover" };
+    }
+    // Набори стікерів: addStickerToSet до неіснуючого набору — STICKERSET_INVALID, як у Telegram.
+    const set = tg.stickerSets.get(payload.name);
+    if (method === "addStickerToSet") {
+      if (!set) return { ok: false, error_code: 400, description: "Bad Request: STICKERSET_INVALID" };
+      if (set.length >= 120) return { ok: false, error_code: 400, description: "Bad Request: STICKERS_TOO_MUCH" };
+      set.push(payload.sticker);
+      return ok(true);
+    }
+    if (method === "createNewStickerSet") return (tg.stickerSets.set(payload.name, [...payload.stickers]), ok(true));
+    if (method === "getStickerSet") {
+      return ok({ name: payload.name, title: "t", sticker_type: "regular", stickers: set.map((_, i) => ({ file_id: `st${i + 1}` })) });
     }
     if (method.startsWith("answer") || method.startsWith("delete") || method === "editMessageText") return ok(true);
     if (method === "sendMediaGroup") return ok(payload.media.map(() => ({ message_id: tg.nextId++, date: 0, chat: { id: payload.chat_id, type: "private" } })));
@@ -118,7 +133,7 @@ export function harness({
   const message = (extra) => ({ message_id: messageId++, date: 0, chat, from: USER, ...extra });
 
   return {
-    bot, tg, images, fetches, send,
+    bot, tg, images, fetches, send, stats,
     texts: (calls) => calls.map((c) => c.payload.text ?? c.payload.caption ?? "").join("\n---\n"),
     methods: (calls) => calls.map((c) => c.method),
     text: (text) => send({ message: message({ text }) }),

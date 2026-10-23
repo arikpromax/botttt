@@ -50,6 +50,50 @@ export async function toJpeg(images, bytes, { maxWidth, quality }) {
   return render(images, bytes, Math.min(info.width, maxWidth), quality);
 }
 
+// Стікер Telegram: WEBP, одна сторона рівно 512 px, друга — не більше. cutout — прибрати фон
+// (segment: foreground); якщо Cloudflare не зміг — стікер буде з фоном. → { bytes, cutout }
+export async function toSticker(images, bytes, { cutout = true } = {}) {
+  const make = async (cut) => {
+    const transform = { width: 512, height: 512, fit: "contain", ...(cut ? { segment: "foreground" } : {}) };
+    const result = await images.input(streamOf(bytes)).transform(transform).output({ format: "image/webp", quality: 90 });
+    return new Uint8Array(await (await result.response()).arrayBuffer());
+  };
+  const limit = (err) => String(err?.message ?? err).includes("9422");
+  if (cutout) {
+    try {
+      return { bytes: await make(true), cutout: true };
+    } catch (err) {
+      if (limit(err)) throw new MonthLimitError();
+      console.warn("Фон не прибрано:", err?.message ?? err);
+    }
+  }
+  try {
+    return { bytes: await make(false), cutout: false };
+  } catch (err) {
+    if (limit(err)) throw new MonthLimitError();
+    throw new UnsupportedImageError();
+  }
+}
+
+// «Скан документа»: чорно-біле, контрастніше, світліше й різкіше, не ширше за A4 у 300 dpi.
+export async function toScan(images, bytes) {
+  let info;
+  try {
+    info = await images.info(streamOf(bytes));
+  } catch {
+    throw new UnsupportedImageError();
+  }
+  try {
+    const result = await images.input(streamOf(bytes))
+      .transform({ width: Math.min(info.width, 2480), saturation: 0, contrast: 1.5, brightness: 1.12, sharpen: 1.5 })
+      .output({ format: "image/jpeg", quality: 85 });
+    return new Uint8Array(await (await result.response()).arrayBuffer());
+  } catch (err) {
+    if (String(err?.message ?? err).includes("9422")) throw new MonthLimitError();
+    throw err;
+  }
+}
+
 // → { bytes, width, height, size, fits }; fits = false, якщо до target не дотягли й віддаємо найменше, що вийшло.
 export async function compressToSize(images, bytes, target) {
   let info;

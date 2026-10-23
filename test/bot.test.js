@@ -176,7 +176,7 @@ describe("стиснення фото", () => {
     const h = harness();
     const [ask] = await h.photo(4 * MB);
     const buttons = ask.payload.reply_markup.inline_keyboard.flat().map((b) => b.text);
-    assert.deepEqual(buttons, ["3 МБ", "2 МБ", "1 МБ", "500 КБ", "300 КБ", "200 КБ", "100 КБ", "50 КБ", "У PDF"]);
+    assert.deepEqual(buttons, ["3 МБ", "2 МБ", "1 МБ", "500 КБ", "300 КБ", "200 КБ", "100 КБ", "50 КБ", "У PDF", "Скан документа", "Стікер"]);
 
     const original = { message_id: ask.payload.reply_parameters.message_id, date: 0, chat: { id: 111, type: "private" },
       photo: [{ file_id: "big", file_unique_id: "b", width: 4000, height: 3000, file_size: 4 * MB }] };
@@ -210,16 +210,16 @@ describe("стиснення фото", () => {
     assert.match(h.texts(calls), /фото й так оптимальне \(60 КБ\)/);
   });
 
-  it("маленьке фото не стискає, але пропонує PDF", async () => {
+  it("маленьке фото не стискає, але пропонує PDF, скан і стікер", async () => {
     const h = harness();
     const [menu] = await h.photo(40 * KB);
     assert.match(menu.payload.text, /уже маленьке/);
-    assert.deepEqual(menu.payload.reply_markup.inline_keyboard.flat().map((b) => b.text), ["У PDF"]);
+    assert.deepEqual(menu.payload.reply_markup.inline_keyboard.flat().map((b) => b.text), ["У PDF", "Скан документа", "Стікер"]);
   });
 
   it("каже про вичерпаний місячний ліміт", async () => {
     const h = harness({ images: fakeImages({ fail: "limit" }) });
-    assert.match(h.texts(await h.photo(4 * MB, { caption: "300кб" })), /Ліміт стиснень/);
+    assert.match(h.texts(await h.photo(4 * MB, { caption: "300кб" })), /Ліміт обробки фото/);
   });
 });
 
@@ -295,18 +295,21 @@ describe("QR-код", () => {
   it("текст → кнопка → картинка, яку сканер читає назад у той самий текст", async () => {
     const h = harness();
     const [menu] = await h.text("Привіт, Ара! https://t.me/arawebsite_bot");
-    assert.deepEqual(menu.payload.reply_markup.inline_keyboard.flat().map((b) => b.callback_data), ["qr"]);
+    assert.deepEqual(menu.payload.reply_markup.inline_keyboard.flat().map((b) => b.callback_data), ["qr", "translit"]);
     const photo = (await h.press("qr", h.newMessage({ text: "Привіт, Ара! https://t.me/arawebsite_bot" })))
       .find((c) => c.method === "sendPhoto").payload;
     const png = await readInputFile(photo.photo);
     assert.equal(await decodeQrPng(png), "Привіт, Ара! https://t.me/arawebsite_bot");
   });
 
-  it("задовгий текст — пояснює, без кнопки", async () => {
+  it("задовгий текст — пояснює, без кнопки; український — лишає «Латиницею»", async () => {
     const h = harness();
-    const [reply] = await h.text("я".repeat(200));
+    const [reply] = await h.text("a".repeat(400));
     assert.match(reply.payload.text, /Задовгий текст/);
     assert.equal(reply.payload.reply_markup, undefined);
+    const [menu] = await h.text("я".repeat(200));
+    assert.match(menu.payload.text, /Для QR-коду він задовгий/);
+    assert.deepEqual(menu.payload.reply_markup.inline_keyboard.flat().map((b) => b.callback_data), ["translit"]);
   });
 
   it("команди й тікток не плутає з текстом для QR", async () => {

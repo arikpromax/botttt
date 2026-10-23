@@ -3,6 +3,7 @@
 // інакше Telegram вважав би довгу обробку збоєм і надсилав би те саме оновлення ще раз.
 import { createBot } from "./bot.js";
 import { d1Albums } from "./albums.js";
+import { d1Stats } from "./stats.js";
 
 let ready = null; // бот живе весь час життя екземпляра воркера: getMe — лише при холодному старті
 function setup(env) {
@@ -11,6 +12,9 @@ function setup(env) {
       channel: env.CHANNEL || undefined,
       images: env.IMAGES,
       albums: env.DB ? d1Albums(env.DB) : null,
+      // Сіль для хешів статистики — секрет вебхука: його знають лише воркер і Telegram.
+      stats: env.DB ? d1Stats(env.DB, env.WEBHOOK_SECRET) : null,
+      ownerId: Number(env.OWNER_ID) || null,
     });
     await bot.init();
     return bot;

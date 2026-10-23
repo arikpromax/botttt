@@ -1,14 +1,17 @@
 // Логіка бота Ara Converter: обов'язкова підписка на канал, TikTok без водяного знака, стиснення фото,
-// фото → PDF / JPG, звук із відео. Нічого не зберігає: усе потрібне для продовження дії бот бере
-// з повідомлення, на яке відповідає; лише альбоми на кілька хвилин збираються в тимчасове сховище.
+// фото → PDF / JPG / скан / стікер, звук із відео, QR-код, транслітерація, валюти за курсом НБУ.
+// Надіслане не зберігає: усе потрібне для продовження дії бот бере з повідомлення, на яке відповідає;
+// лише альбоми на кілька хвилин збираються в тимчасове сховище, а для /stats — знеособлена статистика.
 import { Bot, GrammyError, InlineKeyboard, InputFile } from "grammy";
 import { autoRetry } from "@grammyjs/auto-retry";
 import { RestrictedError, findTikTokUrl, resolveTikTok } from "./tiktok.js";
-import { MonthLimitError, UnsupportedImageError, compressToSize, parseSize, sizeChoices, toJpeg } from "./compress.js";
+import { MonthLimitError, UnsupportedImageError, compressToSize, parseSize, sizeChoices, toJpeg, toScan, toSticker } from "./compress.js";
 import { imagesToPdf, jpegInfo, pdfReady } from "./pdf.js";
 import { NoAudioError, UnsupportedVideoError, extractAudio } from "./audio.js";
 import { QR_MAX_BYTES, makeQr } from "./qr.js";
-import { formatSize, t } from "./texts.js";
+import { convertText, parseConversion } from "./currency.js";
+import { hasCyrillic, transliterate } from "./translit.js";
+import { esc, formatSize, t } from "./texts.js";
 
 const HTML = { parse_mode: "HTML", link_preview_options: { is_disabled: true } };
 const MEMBER = new Set(["creator", "administrator", "member"]);
@@ -16,18 +19,31 @@ const ACCESS_TTL = 60_000; // мс: як довго вірити перевір�
 const URL_LIMIT = 20 * 1024 * 1024; // за посиланням Telegram сам завантажує до 20 МБ
 const UPLOAD_LIMIT = 50 * 1024 * 1024; // бот може надіслати файл до 50 МБ
 const FILE_LIMIT = 20 * 1024 * 1024; // бот може отримати файл до 20 МБ
+const STICKER_EMOJI = "🙂"; // Telegram вимагає емодзі для кожного стікера; змінити можна в @Stickers
 
 export const COMMANDS = [{ command: "start", description: "Що вміє бот" }];
+export const OWNER_COMMANDS = [...COMMANDS, { command: "stats", description: "Статистика (бачиш лише ти)" }];
 
 // channel — «@username» каналу для обов'язкової підписки; images — Cloudflare Images (env.IMAGES);
-// albums — тимчасове сховище фото з альбомів (albums.js); albumWait — скільки чекати решту фото альбому, мс.
-export function createBot(token, { channel, images, albums = null, albumWait = 2000, fetch = globalThis.fetch, ...config }) {
+// albums — тимчасове сховище фото з альбомів (albums.js); albumWait — скільки чекати решту фото альбому, мс;
+// stats — знеособлена статистика (stats.js); ownerId — Telegram id власника, лише йому доступна /stats.
+export function createBot(token, {
+  channel, images, albums = null, stats = null, ownerId = null, albumWait = 2000, fetch = globalThis.fetch, ...config
+}) {
   const bot = new Bot(token, config);
   bot.api.config.use(autoRetry());
 
   const reply = (msg) => ({ reply_parameters: { message_id: msg.message_id, allow_sending_without_reply: true } });
   const send = (chatId, text, extra) => bot.api.sendMessage(chatId, text, { ...HTML, ...extra });
   const edit = (msg, text, extra) => bot.api.editMessageText(msg.chat.id, msg.message_id, text, { ...HTML, ...extra }).catch(() => {});
+  // Збій статистики не має заважати самій дії.
+  const track = async (msg, feature) => {
+    try {
+      await stats?.track(msg.from?.id ?? msg.chat.id, feature);
+    } catch (err) {
+      console.error("Статистика:", err.message);
+    }
+  };
 
   // ---- Обов'язкова підписка ----
 
@@ -138,6 +154,7 @@ export function createBot(token, { channel, images, albums = null, albumWait = 2
         : `відео ${v?.height ? `${v.height}p` : ""}${v?.audioKbps ? `, звук у відео ${v.audioKbps} кбіт/с` : ""}`;
       console.log(`TikTok (${post.source}${post.id ? ` ${post.id}` : ""}): ${what}${post.music ? " + трек" : ""}` +
         (post.note ? ` [${post.note}]` : ""));
+      await track(msg, "tiktok");
     } catch (err) {
       console.error(`TikTok${post ? ` (${post.source})` : ""}:`, err.description ?? err.message);
       const tooBig = post?.video && !post.video.headers && post.video.size > URL_LIMIT;
@@ -191,7 +208,7 @@ export function createBot(token, { channel, images, albums = null, albumWait = 2
       keyboard.text(formatSize(size), `size:${size}`);
       if (i % 3 === 2 || i === choices.length - 1) keyboard.row();
     });
-    keyboard.text(t.pdfButton, "pdf");
+    keyboard.text(t.pdfButton, "pdf").text(t.scanButton, "scan").row().text(t.stickerButton, "sticker");
     if (!image.jpeg) keyboard.text(t.jpgButton, "jpg");
     return keyboard;
   }
@@ -237,6 +254,7 @@ export function createBot(token, { channel, images, albums = null, albumWait = 2
       });
       await bot.api.deleteMessage(msg.chat.id, status.message_id).catch(() => {});
       console.log(`Фото: ${formatSize(original.length)} → ${formatSize(result.size)} (ціль ${formatSize(target)})`);
+      await track(msg, "compress");
     } catch (err) {
       await edit(status, photoError(err));
     }
@@ -250,18 +268,21 @@ export function createBot(token, { channel, images, albums = null, albumWait = 2
     return toJpeg(images, bytes, { maxWidth: 2480, quality: 88 });
   }
 
-  async function makePdf(msg, list, status) {
-    status = status ? (await edit(status, t.pdfMaking(list.length)), status) : await send(msg.chat.id, t.pdfMaking(list.length), reply(msg));
+  // PDF із фото; scan — «скан документа»: кожна сторінка чорно-біла, контрастніша й різкіша.
+  async function makePdf(msg, list, status, { scan = false } = {}) {
+    const making = (scan ? t.scanMaking : t.pdfMaking)(list.length);
+    status = status ? (await edit(status, making), status) : await send(msg.chat.id, making, reply(msg));
     try {
       const pages = [];
-      for (const image of list) pages.push(await pdfJpeg(image));
+      for (const image of list) pages.push(scan ? await toScan(images, await download(image.fileId)) : await pdfJpeg(image));
       const pdf = imagesToPdf(pages);
-      const name = list.length === 1 ? list[0].name : "photos";
+      const name = scan ? "scan" : list.length === 1 ? list[0].name : "photos";
       await bot.api.sendDocument(msg.chat.id, new InputFile(pdf, `${name}.pdf`), {
-        ...HTML, ...reply(msg), caption: t.pdfDone(list.length, pdf.length),
+        ...HTML, ...reply(msg), caption: (scan ? t.scanDone : t.pdfDone)(list.length, pdf.length),
       });
       await bot.api.deleteMessage(msg.chat.id, status.message_id).catch(() => {});
-      console.log(`PDF: ${list.length} фото → ${formatSize(pdf.length)}`);
+      console.log(`${scan ? "Скан" : "PDF"}: ${list.length} фото → ${formatSize(pdf.length)}`);
+      await track(msg, scan ? "scan" : list.length > 1 ? "album" : "pdf");
     } catch (err) {
       await edit(status, photoError(err));
     }
@@ -276,8 +297,39 @@ export function createBot(token, { channel, images, albums = null, albumWait = 2
       });
       await bot.api.deleteMessage(msg.chat.id, status.message_id).catch(() => {});
       console.log(`JPG: ${formatSize(jpg.length)}`);
+      await track(msg, "jpg");
     } catch (err) {
       await edit(status, photoError(err));
+    }
+  }
+
+  // ---- Фото → стікер ----
+  // Кожен отримує власний набір: його створено від імені користувача (він власник і може правити його
+  // в @Stickers), бот лише додає туди нові стікери.
+
+  const stickerSetName = (userId) => `ara${userId}_by_${bot.botInfo.username}`;
+
+  async function makeSticker(msg, image, userId, cutout, status) {
+    await edit(status, t.stickerMaking);
+    try {
+      const result = await toSticker(images, await download(image.fileId), { cutout });
+      const name = stickerSetName(userId);
+      const sticker = () => ({ sticker: new InputFile(result.bytes, "sticker.webp"), format: "static", emoji_list: [STICKER_EMOJI] });
+      try {
+        await bot.api.addStickerToSet(userId, name, sticker());
+      } catch (err) {
+        if (!/STICKERSET_INVALID/.test(err.description ?? "")) throw err;
+        await bot.api.createNewStickerSet(userId, name, t.stickerSetTitle(bot.botInfo.username), [sticker()]);
+      }
+      const set = await bot.api.getStickerSet(name);
+      await edit(status, t.stickerDone(set.stickers.length, cutout && !result.cutout), {
+        reply_markup: new InlineKeyboard().url(t.stickerSetButton, `https://t.me/addstickers/${name}`),
+      });
+      await bot.api.sendSticker(msg.chat.id, set.stickers.at(-1).file_id, reply(msg));
+      console.log(`Стікер: ${set.stickers.length}-й у наборі${cutout ? (result.cutout ? ", без фону" : ", фон не прибрано") : ""}`);
+      await track(msg, "sticker");
+    } catch (err) {
+      await edit(status, /STICKERS_TOO_MUCH/.test(err.description ?? "") ? t.stickerSetFull : photoError(err));
     }
   }
 
@@ -295,7 +347,10 @@ export function createBot(token, { channel, images, albums = null, albumWait = 2
     if (items[0]?.message_id !== msg.message_id) return;
     await albums.cleanup();
     await send(msg.chat.id, t.albumMenu(items.length), {
-      ...reply(msg), reply_markup: new InlineKeyboard().text(t.albumPdfButton(items.length), `album:${msg.media_group_id}`),
+      ...reply(msg),
+      reply_markup: new InlineKeyboard()
+        .text(t.albumPdfButton(items.length), `album:${msg.media_group_id}`).row()
+        .text(t.albumScanButton, `scan:${msg.media_group_id}`),
     });
   }
 
@@ -321,6 +376,7 @@ export function createBot(token, { channel, images, albums = null, albumWait = 2
       });
       await bot.api.deleteMessage(msg.chat.id, status.message_id).catch(() => {});
       console.log(`Звук із відео: ${formatSize(video.size)} → ${formatSize(audio.bytes.length)} (${audio.codec}, ${audio.duration} с)`);
+      await track(msg, "sound");
     } catch (err) {
       console.error("Звук із відео:", err.description ?? err.message);
       await edit(status, err instanceof NoAudioError ? t.noSound
@@ -328,15 +384,27 @@ export function createBot(token, { channel, images, albums = null, albumWait = 2
     }
   }
 
-  // ---- Текст → QR-код ----
+  // ---- Текст: QR-код і латиниця ----
 
   const tooLongForQr = (text) => new TextEncoder().encode(text).length > QR_MAX_BYTES;
 
-  function offerQr(msg) {
-    if (tooLongForQr(msg.text)) return send(msg.chat.id, t.qrTooLong, reply(msg));
-    return send(msg.chat.id, t.textMenu, {
-      ...reply(msg), reply_markup: new InlineKeyboard().text(t.qrButton, "qr"),
-    });
+  function offerText(msg) {
+    const qr = !tooLongForQr(msg.text);
+    const latin = hasCyrillic(msg.text);
+    if (!qr && !latin) return send(msg.chat.id, t.qrTooLong, reply(msg));
+    const keyboard = new InlineKeyboard();
+    if (qr) keyboard.text(t.qrButton, "qr");
+    if (latin) keyboard.text(t.translitButton, "translit");
+    return send(msg.chat.id, t.textMenu(qr, latin), { ...reply(msg), reply_markup: keyboard });
+  }
+
+  // Меню стає результатом; довгий текст — кількома повідомленнями (у Telegram до 4096 символів).
+  async function sendTranslit(msg, menu) {
+    const latin = transliterate(msg.text);
+    const parts = latin.match(/[\s\S]{1,3500}/g) ?? [""];
+    await edit(menu, parts.length === 1 ? t.translitDone(latin) : esc(parts[0]));
+    for (const part of parts.slice(1)) await send(msg.chat.id, esc(part));
+    await track(msg, "translit");
   }
 
   async function sendQr(msg, status) {
@@ -345,13 +413,31 @@ export function createBot(token, { channel, images, albums = null, albumWait = 2
       await bot.api.sendPhoto(msg.chat.id, new InputFile(png, "qr.png"), { ...HTML, ...reply(msg), caption: t.qrDone });
       await bot.api.deleteMessage(msg.chat.id, status.message_id).catch(() => {});
       console.log(`QR-код: ${new TextEncoder().encode(msg.text).length} байт`);
+      await track(msg, "qr");
     } catch (err) {
       console.error("QR-код:", err.message);
       await edit(status, t.qrFailed);
     }
   }
 
+  // ---- Валюти за курсом НБУ ----
+
+  async function sendConversion(msg, request) {
+    try {
+      await send(msg.chat.id, await convertText(request, fetch), reply(msg));
+      await track(msg, "currency");
+    } catch (err) {
+      console.error("Курс НБУ:", err.message);
+      await send(msg.chat.id, t.currencyFailed, reply(msg));
+    }
+  }
+
   // ---- Повідомлення ----
+
+  async function sendStart(msg) {
+    await send(msg.chat.id, t.start);
+    await track(msg, "start");
+  }
 
   // Що зробити з повідомленням користувача (після перевірки підписки).
   async function handle(msg) {
@@ -362,12 +448,26 @@ export function createBot(token, { channel, images, albums = null, albumWait = 2
     if (image) return offerPhoto(msg, image);
     const video = videoOf(msg);
     if (video) return offerVideo(msg, video);
-    if (msg.text?.startsWith("/start")) return send(msg.chat.id, t.start);
-    if (msg.text && !msg.text.startsWith("/")) return offerQr(msg);
+    if (msg.text?.startsWith("/start")) return sendStart(msg);
+    if (msg.text && !msg.text.startsWith("/")) {
+      const conversion = parseConversion(msg.text);
+      return conversion ? sendConversion(msg, conversion) : offerText(msg);
+    }
     return send(msg.chat.id, t.help);
   }
 
-  bot.command("start", (ctx) => send(ctx.chat.id, t.start));
+  bot.command("start", (ctx) => sendStart(ctx.message));
+
+  // Статистика — лише власнику; для інших /stats — звичайна невідома команда.
+  bot.command("stats", async (ctx, next) => {
+    if (!stats || !ownerId || ctx.from?.id !== ownerId) return next();
+    try {
+      await send(ctx.chat.id, t.stats(await stats.report()));
+    } catch (err) {
+      console.error("Статистика:", err.message);
+      await send(ctx.chat.id, t.statsFailed);
+    }
+  });
 
   bot.chatType("private").on("message", async (ctx) => {
     if (!(await hasAccess(ctx.from.id))) return sendGate(ctx.message);
@@ -411,16 +511,39 @@ export function createBot(token, { channel, images, albums = null, albumWait = 2
     return image ? makeJpg(original, image, menu) : edit(menu, t.photoGone);
   });
 
-  onButton(/^album:(.+)$/, async ({ ctx, menu, original }) => {
-    const items = albums ? await albums.list(ctx.match[1]) : [];
+  onButton("scan", ({ menu, original }) => {
+    const image = imageOf(original);
+    return image ? makePdf(original, [image], menu, { scan: true }) : edit(menu, t.photoGone);
+  });
+
+  // Стікер: спершу питаємо, чи прибирати фон (для мемів і скрінів фон потрібен).
+  onButton("sticker", ({ menu, original }) => {
+    if (!imageOf(original)) return edit(menu, t.photoGone);
+    return edit(menu, t.stickerMenu, {
+      reply_markup: new InlineKeyboard().text(t.stickerCutButton, "sticker:cut").text(t.stickerKeepButton, "sticker:keep"),
+    });
+  });
+
+  onButton(/^sticker:(cut|keep)$/, ({ ctx, menu, original }) => {
+    const image = imageOf(original);
+    return image ? makeSticker(original, image, ctx.from.id, ctx.match[1] === "cut", menu) : edit(menu, t.photoGone);
+  });
+
+  onButton(/^(album|scan):(.+)$/, async ({ ctx, menu, original }) => {
+    const items = albums ? await albums.list(ctx.match[2]) : [];
     if (!items.length) return edit(menu, t.albumGone);
-    return makePdf(original ?? menu, albumImages(items), menu);
+    return makePdf(original ?? menu, albumImages(items), menu, { scan: ctx.match[1] === "scan" });
   });
 
   onButton("qr", ({ menu, original }) => {
-    if (!original?.text) return edit(menu, t.qrGone);
+    if (!original?.text) return edit(menu, t.textGone);
     if (tooLongForQr(original.text)) return edit(menu, t.qrTooLong);
     return sendQr(original, menu);
+  });
+
+  onButton("translit", ({ menu, original }) => {
+    if (!original?.text) return edit(menu, t.textGone);
+    return sendTranslit(original, menu);
   });
 
   onButton("sound", ({ menu, original }) => {

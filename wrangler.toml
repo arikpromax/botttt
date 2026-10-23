@@ -8,7 +8,8 @@ send_metrics = false
 [images]
 binding = "IMAGES"
 
-# Тимчасове сховище фото з альбомів (для «Зібрати в PDF»), записи живуть годину.
+# Тимчасове сховище фото з альбомів (для «Зібрати в PDF», записи живуть годину)
+# і знеособлена статистика для /stats (хеші замість id, записи живуть 90 днів).
 [[d1_databases]]
 binding = "DB"
 database_name = "araconverter"
@@ -17,6 +18,7 @@ migrations_dir = "migrations"
 
 [vars]
 CHANNEL = "@arawebsite"  # обов'язкова підписка; порожньо — без підписки
+OWNER_ID = "677078927"   # Telegram id власника: лише йому відповідає /stats
 
 [observability]
 enabled = true
