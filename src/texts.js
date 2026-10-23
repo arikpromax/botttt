@@ -48,6 +48,9 @@ export const t = {
   compressedNear: (target, after) =>
     `Менше ${formatSize(target)} без втрати читабельності не вийшло — ось найменше: <b>${formatSize(after)}</b>`,
   alreadySmall: (size) => `Фото вже маленьке — ${formatSize(size)}. Стискати нема куди.`,
+  alreadyUnder: (target, size) => `Фото вже ${formatSize(size)} — це менше за ${formatSize(target)}, стискати не треба.`,
+  notSmaller: (size) =>
+    `Менше вже не стиснеться без помітної втрати якості — фото й так оптимальне (${formatSize(size)}).`,
   photoTooBig: "Фото завелике: Telegram дає ботам файли лише до 20 МБ.",
   photoUnsupported: "Цей формат фото поки не підтримується. Спробуй JPG, PNG або WEBP.",
   photoFailed: "Не вдалося стиснути фото. Спробуй ще раз трохи пізніше.",

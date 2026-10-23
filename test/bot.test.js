@@ -193,6 +193,22 @@ describe("стиснення фото", () => {
     assert.ok(calls.some((c) => c.method === "sendDocument"));
   });
 
+  it("не стискає до розміру, більшого за фото", async () => {
+    const h = harness({ fileBytes: 60 * KB });
+    const calls = await h.photo(60 * KB, { caption: "1 мб" });
+    assert.match(h.texts(calls), /Фото вже 60 КБ — це менше за 1 МБ/);
+    assert.ok(!calls.some((c) => c.method === "sendDocument"));
+    assert.equal(h.images.calls.length, 0);
+  });
+
+  it("не віддає файл, більший за оригінал", async () => {
+    // Фото 60 КБ, а «стиснене» виходить сотні кілобайт — віддавати таке не можна.
+    const h = harness({ fileBytes: 60 * KB, images: fakeImages({ width: 400, height: 300, base: 900 * KB }) });
+    const calls = await h.photo(60 * KB, { caption: "50 кб" });
+    assert.ok(!calls.some((c) => c.method === "sendDocument"));
+    assert.match(h.texts(calls), /фото й так оптимальне \(60 КБ\)/);
+  });
+
   it("маленьке фото не чіпає", async () => {
     const h = harness();
     assert.match(h.texts(await h.photo(40 * KB)), /вже маленьке/);

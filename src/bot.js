@@ -161,6 +161,9 @@ export function createBot(token, { channel, images, fetch = globalThis.fetch, ..
   async function offerCompression(msg, image) {
     if (image.size > FILE_LIMIT) return send(msg.chat.id, t.photoTooBig, reply(msg));
     const target = parseSize(msg.caption);
+    if (target && image.size && target >= image.size * 0.95) {
+      return send(msg.chat.id, t.alreadyUnder(target, image.size), reply(msg));
+    }
     if (target) return compress(msg, image, target);
     const choices = sizeChoices(image.size);
     if (!choices.length) return send(msg.chat.id, t.alreadySmall(image.size), reply(msg));
@@ -179,7 +182,13 @@ export function createBot(token, { channel, images, fetch = globalThis.fetch, ..
       const res = await fetch(`https://api.telegram.org/file/bot${token}/${file.file_path}`);
       if (!res.ok) throw new Error(`Telegram віддав файл з кодом ${res.status}`);
       const original = new Uint8Array(await res.arrayBuffer());
+      if (target >= original.length * 0.95) return edit(status, t.alreadyUnder(target, original.length));
       const result = await compressToSize(images, original, target);
+      // Більший файл, ніж був, не віддаємо: фото вже стиснуте краще, ніж вийшло б у нас.
+      if (result.size >= original.length) {
+        console.log(`Фото: ${formatSize(original.length)} — менше не вийшло (ціль ${formatSize(target)})`);
+        return edit(status, t.notSmaller(original.length));
+      }
       const sizeLabel = formatSize(target).replace(/\s|,/g, "");
       await bot.api.sendDocument(msg.chat.id, new InputFile(result.bytes, `${image.name}_${sizeLabel}.jpg`), {
         ...HTML, ...reply(msg),

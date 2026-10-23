@@ -57,7 +57,7 @@ export function fakeMp4({ audioKbps = 0 } = {}) {
   return concat([box("ftyp", ascii("isom")), box("moov", box("trak", mdia)), box("mdat", new Uint8Array(64))]);
 }
 
-export function harness({ channel = "@chan", tiktok, page, files = {}, images = fakeImages() } = {}) {
+export function harness({ channel = "@chan", tiktok, page, files = {}, images = fakeImages(), fileBytes = 4 * MB } = {}) {
   const tg = { member: "member", calls: [], rejectUrl: false, nextId: 100 };
   const fetches = [];
   const fakeFetch = async (url, init = {}) => {
@@ -66,7 +66,7 @@ export function harness({ channel = "@chan", tiktok, page, files = {}, images = 
       return new Response(JSON.stringify(tiktok ?? { code: -1, msg: "no tiktok" }), { headers: { "content-type": "application/json" } });
     }
     if (/tiktok\.com\//.test(String(url))) return page ? tiktokPage(page) : new Response("blocked", { status: 403 });
-    if (String(url).startsWith("https://api.telegram.org/file/")) return new Response(new Uint8Array(4 * MB));
+    if (String(url).startsWith("https://api.telegram.org/file/")) return new Response(new Uint8Array(fileBytes));
     if (files[String(url)]) return new Response(files[String(url)]);
     if (String(url).startsWith("https://cdn.test/")) return new Response(new Uint8Array(1024));
     return new Response("not found", { status: 404 });
