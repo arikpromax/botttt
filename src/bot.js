@@ -128,7 +128,8 @@ export function createBot(token, { channel, images, fetch = globalThis.fetch, ..
         status.set("upload_document");
         await sendSound(msg.chat.id, post.music);
       }
-      console.log(`TikTok (${post.source}): ${post.images.length ? `${post.images.length} фото` : "відео"}${post.music ? " + звук" : ""}`);
+      const sound = post.video?.audioKbps ? `, звук у відео ${post.video.audioKbps} кбіт/с` : "";
+      console.log(`TikTok (${post.source}): ${post.images.length ? `${post.images.length} фото` : `відео${sound}`}${post.music ? " + звук" : ""}`);
     } catch (err) {
       console.error(`TikTok${post ? ` (${post.source})` : ""}:`, err.description ?? err.message);
       const tooBig = post?.video && !post.video.headers && post.video.size > URL_LIMIT;

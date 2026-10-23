@@ -43,7 +43,21 @@ export function tiktokPage(itemStruct) {
   return new Response(html, { headers });
 }
 
-export function harness({ channel = "@chan", tiktok, page, images = fakeImages() } = {}) {
+// Мінімальний MP4: ftyp + moov з однією доріжкою (звук із заданим бітрейтом або відео без звуку) + mdat.
+const ascii = (s) => Uint8Array.from(s, (c) => c.charCodeAt(0));
+const u32 = (n) => { const b = new Uint8Array(4); new DataView(b.buffer).setUint32(0, n); return b; };
+const concat = (parts) => { const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0)); let o = 0; for (const p of parts) { out.set(p, o); o += p.length; } return out; };
+const box = (type, ...parts) => concat([u32(8 + parts.reduce((n, p) => n + p.length, 0)), ascii(type), ...parts]);
+export function fakeMp4({ audioKbps = 0 } = {}) {
+  const handler = audioKbps ? "soun" : "vide";
+  const esds = box("esds", new Uint8Array(4), Uint8Array.from([0x03, 0x19, 0x00, 0x01, 0x00, 0x04, 0x11, 0x40, 0x15, 0, 0, 0]),
+    u32(audioKbps * 1000), u32(audioKbps * 1000));
+  const stsd = box("stsd", new Uint8Array(8), box("mp4a", new Uint8Array(28), esds));
+  const mdia = box("mdia", box("hdlr", new Uint8Array(8), ascii(handler), new Uint8Array(12)), box("minf", box("stbl", stsd)));
+  return concat([box("ftyp", ascii("isom")), box("moov", box("trak", mdia)), box("mdat", new Uint8Array(64))]);
+}
+
+export function harness({ channel = "@chan", tiktok, page, files = {}, images = fakeImages() } = {}) {
   const tg = { member: "member", calls: [], rejectUrl: false, nextId: 100 };
   const fetches = [];
   const fakeFetch = async (url, init = {}) => {
@@ -53,6 +67,7 @@ export function harness({ channel = "@chan", tiktok, page, images = fakeImages()
     }
     if (/tiktok\.com\//.test(String(url))) return page ? tiktokPage(page) : new Response("blocked", { status: 403 });
     if (String(url).startsWith("https://api.telegram.org/file/")) return new Response(new Uint8Array(4 * MB));
+    if (files[String(url)]) return new Response(files[String(url)]);
     if (String(url).startsWith("https://cdn.test/")) return new Response(new Uint8Array(1024));
     return new Response("not found", { status: 404 });
   };

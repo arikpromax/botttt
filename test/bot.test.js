@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { fakeImages, harness, tiktokVideo } from "./harness.js";
+import { fakeImages, fakeMp4, harness, tiktokVideo } from "./harness.js";
+import { audioKbps } from "../src/mp4.js";
 import { findTikTokUrl, resolveTikTok } from "../src/tiktok.js";
 import { compressToSize, parseSize, sizeChoices, MonthLimitError } from "../src/compress.js";
 
@@ -95,6 +96,36 @@ describe("TikTok", () => {
     const download = h.fetches.find((f) => f.url === "https://cdn.test/page.mp4");
     assert.match(download.headers.cookie, /ttwid=a1; tt_chain_token=b2/);
     assert.ok(h.fetches.some((f) => f.url === "https://cdn.test/page.m4a"));
+  });
+
+  it("читає бітрейт звуку з початку MP4", () => {
+    assert.equal(audioKbps(fakeMp4({ audioKbps: 64 })), 64);
+    assert.equal(audioKbps(fakeMp4({ audioKbps: 0 })), 0); // лише відео
+    assert.equal(audioKbps(fakeMp4({ audioKbps: 64 }).subarray(0, 30)), null); // moov не завантажено
+  });
+
+  it("зі сторінки бере версію з найкращим звуком, без звуку — відкидає", async () => {
+    const variant = (url, codec, height) => ({ GearName: url, CodecType: codec, PlayAddr: { UrlList: [url], DataSize: "1000000", Width: 720, Height: height } });
+    const h = harness({
+      page: {
+        video: {
+          playAddr: "https://cdn.test/h264.mp4", size: "1000000",
+          bitrateInfo: [
+            variant("https://cdn.test/h264.mp4", "h264", 1024),
+            variant("https://cdn.test/hevc64.mp4", "h265_hvc1", 1280),
+            variant("https://cdn.test/hevc-mute.mp4", "h265_hvc1", 1920),
+          ],
+        },
+      },
+      files: {
+        "https://cdn.test/h264.mp4": fakeMp4({ audioKbps: 32 }),
+        "https://cdn.test/hevc64.mp4": fakeMp4({ audioKbps: 64 }),
+        "https://cdn.test/hevc-mute.mp4": fakeMp4({ audioKbps: 0 }),
+      },
+    });
+    await h.text(LINK);
+    const download = h.fetches.filter((f) => !f.headers.range && f.url.endsWith(".mp4")).at(-1);
+    assert.equal(download.url, "https://cdn.test/hevc64.mp4");
   });
 
   it("спершу пробує tikwm (HD) і тоді сторінку TikTok не чіпає", async () => {
