@@ -1,0 +1,19 @@
+{
+  "name": "araconverter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Ara Converter — Telegram-бот українською: TikTok без водяного знака, стиснення фото",
+  "scripts": {
+    "test": "node --test \"test/*.test.js\"",
+    "deploy": "wrangler deploy",
+    "webhook": "node --env-file-if-exists=.env scripts/webhook.js"
+  },
+  "dependencies": {
+    "@grammyjs/auto-retry": "^2.0.2",
+    "grammy": "^1.46.0"
+  },
+  "devDependencies": {
+    "wrangler": "^4.152.0"
+  }
+}

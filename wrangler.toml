@@ -1,0 +1,15 @@
+# Cloudflare Worker бота Ara Converter. Секрети — npx wrangler secret put BOT_TOKEN / WEBHOOK_SECRET.
+name = "araconverter"
+main = "src/worker.js"
+compatibility_date = "2026-10-01"
+send_metrics = false
+
+# Cloudflare Images — стиснення фото (5000 обробок на місяць безкоштовно; понад ліміт не платне, а просто відмова).
+[images]
+binding = "IMAGES"
+
+[vars]
+CHANNEL = "@arawebsite"  # обов'язкова підписка; порожньо — без підписки
+
+[observability]
+enabled = true
