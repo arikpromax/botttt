@@ -8,17 +8,26 @@ send_metrics = false
 [images]
 binding = "IMAGES"
 
-# Тимчасове сховище фото з альбомів (для «Зібрати в PDF», записи живуть годину)
-# і знеособлена статистика для /stats (хеші замість id, записи живуть 90 днів).
+# Тимчасове сховище фото з альбомів (для «Зібрати в PDF», записи живуть годину),
+# знеособлена статистика для /stats (хеші замість id, записи живуть 90 днів) і прогрес гравців Ara Farm.
 [[d1_databases]]
 binding = "DB"
 database_name = "araconverter"
 database_id = "e3604757-9fb7-48a6-b0e2-40cb6a354e34"
 migrations_dir = "migrations"
 
+# Mini App (гра Ara Farm і «Що вміє бот»): статичні файли; воркер запускається лише для API й вебхука.
+# Адреса застосунку в BotFather — msgsaver.msgsaver.workers.dev: той воркер пересилає все сюди.
+[assets]
+directory = "./app"
+binding = "ASSETS"
+run_worker_first = ["/api/*", "/webhook"]
+
 [vars]
 CHANNEL = "@arawebsite"  # обов'язкова підписка; порожньо — без підписки
 OWNER_ID = "677078927"   # Telegram id власника: лише йому відповідає /stats
+BOT_USERNAME = "arawebsite_bot"  # для посилань-запрошень у грі
+APP_URL = "https://msgsaver.msgsaver.workers.dev/"  # Mini App (Main App у BotFather) — кнопка «Грати»
 
 [observability]
 enabled = true

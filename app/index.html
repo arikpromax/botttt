@@ -1,0 +1,960 @@
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>Ara Farm</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    /* Mini App бота Ara Converter: гра Ara Farm (тапалка) + профіль із тим, що вміє бот. */
+    :root {
+      --bg: #060f24;
+      --card: #0d1d42;
+      --card-hi: #132958;
+      --line: rgba(110, 150, 255, 0.16);
+      --text: #eef3ff;
+      --hint: #8fa3c9;
+      --blue: #2d8cff;
+      --blue-hi: #5aa8ff;
+      --green: #3ddc84;
+      --gold: #ffc83d;
+      --red: #ff5d6c;
+      --radius: 18px;
+      --tabbar: 68px;
+      color-scheme: dark;
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      background: radial-gradient(130% 55% at 50% 0%, #143272 0%, #0a1838 48%, var(--bg) 100%) fixed var(--bg);
+      color: var(--text);
+      font: 15px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Arial, sans-serif;
+      -webkit-font-smoothing: antialiased; user-select: none; -webkit-user-select: none; overscroll-behavior: none;
+    }
+    button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-align: inherit; }
+    .icon { width: 22px; height: 22px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+    .coin-ic { width: 18px; height: 18px; flex: none; }
+    b, strong { font-weight: 700; }
+    .hint { color: var(--hint); font-size: 13px; }
+    .plus { color: var(--green); font-weight: 700; }
+
+    main { max-width: 520px; margin: 0 auto; padding: 12px 14px calc(var(--tabbar) + 20px + env(safe-area-inset-bottom)); }
+    .tab { display: none; }
+    .tab.active { display: block; animation: fade 0.18s ease; }
+    @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+    .card { background: linear-gradient(180deg, var(--card-hi), var(--card)); border: 1px solid var(--line); border-radius: var(--radius); }
+    .tile { width: 44px; height: 44px; border-radius: 13px; flex: none; display: grid; place-items: center; }
+    .tile .icon { width: 24px; height: 24px; }
+    .tone-gold { color: var(--gold); background: rgba(255, 200, 61, 0.14); }
+    .tone-blue { color: var(--blue-hi); background: rgba(45, 140, 255, 0.16); }
+    .tone-green { color: var(--green); background: rgba(61, 220, 132, 0.14); }
+    .tone-violet { color: #b08cff; background: rgba(176, 140, 255, 0.15); }
+    .tone-pink { color: #ff6fa3; background: rgba(255, 111, 163, 0.14); }
+    .tone-teal { color: #3ccbd4; background: rgba(60, 203, 212, 0.14); }
+    .tone-orange { color: #ff9a47; background: rgba(255, 154, 71, 0.14); }
+    .tone-red { color: var(--red); background: rgba(255, 93, 108, 0.13); }
+
+    .title { display: flex; align-items: center; gap: 12px; margin: 4px 2px 4px; }
+    .title h1 { margin: 0; font-size: 24px; line-height: 1.15; }
+    .lead { margin: 0 2px 16px; color: var(--hint); font-size: 14px; }
+    h2 { margin: 22px 2px 10px; font-size: 17px; }
+
+    .btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 14px 16px; border-radius: 14px;
+      font-weight: 700; background: linear-gradient(180deg, #3b97ff, #1f74ea); color: #fff; box-shadow: 0 6px 18px rgba(31, 116, 234, 0.35); }
+    .btn:active { transform: scale(0.985); }
+    .btn[disabled] { background: #1b2c55; color: var(--hint); box-shadow: none; }
+    .btn.ghost { background: var(--card-hi); color: var(--blue-hi); box-shadow: none; border: 1px solid var(--line); }
+    .pill { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 12px; font-weight: 700; font-size: 14px;
+      background: rgba(255, 255, 255, 0.06); border: 1px solid var(--line); white-space: nowrap; }
+    .bar { height: 6px; border-radius: 6px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
+    .bar i { display: block; height: 100%; width: 0; border-radius: inherit; background: linear-gradient(90deg, #2d8cff, #5ac8ff); transition: width 0.3s; }
+
+    /* ---- Гра ---- */
+    #tab-game.active { display: flex; flex-direction: column; gap: 10px;
+      min-height: calc(var(--tg-viewport-stable-height, 100vh) - var(--tabbar) - 32px - env(safe-area-inset-bottom)); }
+    .player { display: flex; align-items: center; gap: 12px; padding: 2px 2px 0; }
+    .avatar { width: 46px; height: 46px; border-radius: 50%; flex: none; overflow: hidden; display: grid; place-items: center;
+      background: linear-gradient(135deg, #3b6fd8, #7c4fe0); font-weight: 800; font-size: 17px; border: 2px solid rgba(255, 255, 255, 0.15); }
+    .avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .player-info { flex: 1; min-width: 0; }
+    .player-info b { display: block; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .lvl-row { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--hint); margin: 1px 0 4px; }
+    .balance { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 12px 16px; }
+    .balance .coin-ic { width: 42px; height: 42px; }
+    .big { font-size: 34px; font-weight: 800; letter-spacing: -0.5px; line-height: 1.05; font-variant-numeric: tabular-nums; }
+    .duo { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .stat { display: flex; align-items: center; gap: 10px; padding: 10px 12px; width: 100%; }
+    .stat .tile { width: 36px; height: 36px; border-radius: 11px; }
+    .stat .tile .icon { width: 20px; height: 20px; }
+    .stat b { display: block; font-size: 16px; font-variant-numeric: tabular-nums; }
+    .stat .sub { font-size: 11.5px; color: var(--hint); }
+
+    .field { position: relative; flex: 1; min-height: 290px; border-radius: 24px; overflow: hidden; border: 1px solid var(--line);
+      display: grid; place-items: center; touch-action: manipulation; }
+    .scene { position: absolute; inset: 0; width: 100%; height: 100%; }
+    .blades { transform-origin: 0 0; animation: spin 9s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .ring { position: absolute; width: min(70vw, 270px, 44vh); aspect-ratio: 1; border-radius: 50%;
+      border: 3px solid rgba(130, 200, 255, 0.55);
+      box-shadow: 0 0 0 10px rgba(80, 160, 255, 0.12), 0 0 70px rgba(90, 170, 255, 0.55), inset 0 0 40px rgba(90, 170, 255, 0.35); }
+    .big-coin { position: relative; width: min(60vw, 230px, 37vh); aspect-ratio: 1; border-radius: 50%; touch-action: none;
+      filter: drop-shadow(0 12px 22px rgba(0, 0, 0, 0.45)); transition: transform 0.09s ease-out; }
+    .big-coin svg { width: 100%; height: 100%; display: block; pointer-events: none; }
+    .big-coin.tired { filter: grayscale(0.55) brightness(0.8) drop-shadow(0 12px 22px rgba(0, 0, 0, 0.45)); }
+    .big-coin.shake { animation: shake 0.35s; }
+    @keyframes shake { 25% { translate: -6px 0; } 50% { translate: 6px 0; } 75% { translate: -3px 0; } }
+    .per-tap { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); padding: 8px 16px; border-radius: 20px;
+      background: rgba(4, 12, 30, 0.72); font-weight: 700; font-size: 14px; white-space: nowrap; }
+    .float { position: fixed; z-index: 30; pointer-events: none; font-weight: 800; font-size: 26px; color: #fff;
+      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6); animation: rise 0.85s ease-out forwards; }
+    @keyframes rise { from { opacity: 1; transform: translate(-50%, -50%); } to { opacity: 0; transform: translate(-50%, -150px); } }
+
+    /* ---- Списки карток ---- */
+    .list { display: grid; gap: 10px; }
+    .row { display: flex; align-items: center; gap: 12px; padding: 14px; width: 100%; }
+    .row .grow { flex: 1; min-width: 0; }
+    .row .grow b { display: block; font-size: 15.5px; }
+    .row .meta { font-size: 12.5px; color: var(--hint); margin-top: 2px; }
+    .row .change { font-weight: 700; margin-top: 2px; }
+    .price.poor { opacity: 0.55; }
+    .done-tag { display: inline-flex; align-items: center; gap: 4px; padding: 7px 10px; border-radius: 11px; font-size: 13px; font-weight: 700;
+      color: var(--green); border: 1px solid rgba(61, 220, 132, 0.4); white-space: nowrap; }
+    .done-tag .icon { width: 16px; height: 16px; }
+    .small-btn { padding: 8px 14px; border-radius: 11px; font-size: 13.5px; font-weight: 700; color: #fff; white-space: nowrap;
+      background: linear-gradient(180deg, #3b97ff, #1f74ea); }
+    .chips { display: flex; gap: 8px; margin: 0 0 12px; overflow-x: auto; scrollbar-width: none; }
+    .chip { padding: 8px 14px; border-radius: 12px; font-size: 13.5px; font-weight: 600; background: var(--card); border: 1px solid var(--line); color: var(--hint); white-space: nowrap; }
+    .chip.on { background: var(--blue); color: #fff; border-color: transparent; }
+    .progress { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 12px; color: var(--hint); }
+    .progress .bar { flex: 1; max-width: 120px; }
+
+    /* ---- Друзі ---- */
+    .ref { padding: 14px; }
+    .ref-link { display: flex; align-items: center; gap: 10px; margin: 8px 0 12px; padding: 12px 12px 12px 14px; border-radius: 13px;
+      background: rgba(0, 0, 0, 0.25); border: 1px solid var(--line); }
+    .ref-link span { flex: 1; min-width: 0; font-weight: 700; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: text; }
+    .how { display: grid; gap: 8px; margin: 12px 0 0; padding: 12px 14px; border-radius: 14px; background: rgba(45, 140, 255, 0.09); font-size: 13.5px; }
+    .how div { display: flex; gap: 8px; align-items: center; }
+    .how .icon { width: 18px; height: 18px; color: var(--blue-hi); }
+    .counts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+    .counts .stat b { font-size: 18px; }
+    .friend .avatar { width: 40px; height: 40px; font-size: 15px; }
+    .empty { padding: 22px 16px; text-align: center; color: var(--hint); font-size: 14px; }
+
+    /* ---- Профіль ---- */
+    .me { display: flex; align-items: center; gap: 14px; margin: 4px 2px 16px; }
+    .me .avatar { width: 72px; height: 72px; font-size: 26px; }
+    .me b { font-size: 20px; display: block; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .menu { margin-top: 14px; overflow: hidden; }
+    .menu button { display: flex; align-items: center; gap: 12px; width: 100%; padding: 13px 14px; }
+    .menu button + button { border-top: 1px solid var(--line); }
+    .menu .grow { flex: 1; }
+    .menu .chev { width: 18px; height: 18px; color: var(--hint); }
+    .menu .danger { color: var(--red); }
+    .badge-off { margin-left: auto; padding: 4px 9px; border-radius: 9px; font-size: 12px; font-weight: 700; color: #ff8a95;
+      background: rgba(255, 93, 108, 0.12); border: 1px solid rgba(255, 93, 108, 0.45); }
+    .foot { margin: 18px 0 0; text-align: center; color: var(--hint); font-size: 12.5px; }
+
+    /* ---- Нижнє меню ---- */
+    .tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; display: grid; grid-template-columns: repeat(5, 1fr);
+      padding: 6px 6px calc(6px + env(safe-area-inset-bottom)); background: rgba(7, 16, 38, 0.94); border-top: 1px solid var(--line);
+      backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+    .tabbar button { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 0; color: var(--hint); font-size: 11px; font-weight: 600; }
+    .tabbar button.on { color: var(--blue-hi); }
+    .tabbar .icon { width: 25px; height: 25px; }
+
+    /* ---- Аркуш знизу, сторінка, підказка ---- */
+    .backdrop { position: fixed; inset: 0; z-index: 40; background: rgba(0, 4, 14, 0.6); opacity: 0; pointer-events: none; transition: opacity 0.2s; }
+    .backdrop.on { opacity: 1; pointer-events: auto; }
+    .sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 41; max-width: 520px; margin: 0 auto;
+      padding: 22px 18px calc(18px + env(safe-area-inset-bottom)); border-radius: 26px 26px 0 0; text-align: center;
+      background: linear-gradient(180deg, #16305f, #0c1b3d); border: 1px solid var(--line); border-bottom: 0;
+      transform: translateY(105%); transition: transform 0.25s ease; }
+    .sheet.on { transform: none; }
+    .sheet .x { position: absolute; top: 14px; right: 14px; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: rgba(255, 255, 255, 0.08); }
+    .sheet .x .icon { width: 18px; height: 18px; }
+    .sheet h3 { margin: 12px 0 2px; font-size: 21px; }
+    .sheet p { margin: 10px 0 16px; color: #c9d5ee; font-size: 14.5px; }
+    .sheet .hero-tile { width: 84px; height: 84px; border-radius: 24px; margin: 0 auto; }
+    .sheet .hero-tile .icon { width: 44px; height: 44px; }
+    .sheet .change { font-size: 22px; font-weight: 800; color: var(--green); }
+    .cost { display: flex; align-items: center; justify-content: space-between; padding: 14px 4px; margin-bottom: 14px; border-top: 1px solid var(--line); font-size: 15px; }
+    .cost b { display: flex; align-items: center; gap: 6px; font-size: 19px; }
+    .cost .coin-ic { width: 22px; height: 22px; }
+    .gauge { position: relative; width: 170px; height: 170px; margin: 4px auto 8px; }
+    .gauge svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+    .gauge div { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; }
+    .gauge b { font-size: 24px; }
+
+    .page { position: fixed; inset: 0; z-index: 35; overflow-y: auto; background: var(--bg); display: none; }
+    .page.on { display: block; animation: fade 0.18s ease; }
+    .page main { padding-bottom: calc(30px + env(safe-area-inset-bottom)); }
+    .back { display: inline-flex; align-items: center; gap: 6px; margin: 0 0 10px; color: var(--blue-hi); font-weight: 600; }
+    .back .icon { width: 18px; height: 18px; transform: scaleX(-1); }
+    .in-telegram .back { display: none; }
+    .feature { display: flex; gap: 14px; padding: 14px; }
+    .feature + .feature { margin-top: 10px; }
+    .feature b { display: block; font-size: 15.5px; margin-bottom: 3px; }
+    .feature p { margin: 0; color: var(--hint); font-size: 13.5px; }
+    .feature em { font-style: normal; color: var(--text); }
+    .checks { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+    .checks li { display: flex; gap: 10px; align-items: center; font-size: 14.5px; }
+    .checks .icon { width: 20px; height: 20px; padding: 2px; border-radius: 6px; color: #fff; background: #23a35a; }
+    .wallet-art { display: block; width: 150px; margin: 6px auto 0; }
+
+    .toast { position: fixed; top: calc(12px + env(safe-area-inset-top)); left: 50%; z-index: 60; max-width: calc(100% - 32px);
+      transform: translate(-50%, -140%); padding: 11px 16px; border-radius: 14px; font-size: 14px; font-weight: 600; text-align: center;
+      background: rgba(18, 38, 82, 0.97); border: 1px solid var(--line); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4); transition: transform 0.25s ease; }
+    .toast.on { transform: translate(-50%, 0); }
+    .demo { margin: 0 0 10px; padding: 10px 12px; border-radius: 13px; font-size: 13px; color: #ffd98a; background: rgba(255, 200, 61, 0.1); border: 1px solid rgba(255, 200, 61, 0.3); }
+    .loading { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: var(--bg); transition: opacity 0.3s; }
+    .loading.off { opacity: 0; pointer-events: none; }
+    .loading svg { width: 84px; height: 84px; animation: pulse 1s ease-in-out infinite alternate; }
+    .loading p { margin: 14px 0 0; color: var(--hint); text-align: center; }
+    @keyframes pulse { to { transform: scale(1.08); } }
+  </style>
+</head>
+<body>
+<!-- Монета й іконки (власні SVG). -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <radialGradient id="coin-face" cx="38%" cy="30%" r="78%"><stop offset="0" stop-color="#fff4b0"/><stop offset=".42" stop-color="#ffcb3d"/><stop offset="1" stop-color="#d98806"/></radialGradient>
+    <linearGradient id="coin-edge" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#eaa012"/><stop offset="1" stop-color="#9c5600"/></linearGradient>
+  </defs>
+  <symbol id="coin" viewBox="0 0 100 100">
+    <circle cx="50" cy="52" r="47" fill="url(#coin-edge)"/>
+    <circle cx="50" cy="48" r="45" fill="url(#coin-face)"/>
+    <circle cx="50" cy="48" r="35.5" fill="none" stroke="#c47604" stroke-width="2.4" opacity=".75"/>
+    <path d="M50 69V47" stroke="#a85e00" stroke-width="5" stroke-linecap="round"/>
+    <path d="M49 51c-2-10-9.5-15.5-20.5-15.5 0 11 8 17.5 20.5 15.5z" fill="#b56800"/>
+    <path d="M51 46.5c2-12 11-18.5 23-18.5 0 12-9 20-23 18.5z" fill="#b56800"/>
+    <ellipse cx="35" cy="25" rx="13" ry="5" fill="#fff" opacity=".38" transform="rotate(-28 35 25)"/>
+  </symbol>
+  <symbol id="i-game" viewBox="0 0 24 24"><path d="M7 10h4M9 8v4M15.5 11h.01M17.8 9h.01"/><path d="M6.8 5.5h10.4A4.8 4.8 0 0 1 22 10.3v2.9c0 3.6-3.9 5.2-6 2.9l-1.3-1.4a2 2 0 0 0-1.5-.7h-2.4a2 2 0 0 0-1.5.7L8 16.1c-2.1 2.3-6 .7-6-2.9v-2.9a4.8 4.8 0 0 1 4.8-4.8z"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 3.5l7 7h-4.2v6.2H9.2v-6.2H5z"/><path d="M8 20.5h8"/></symbol>
+  <symbol id="i-tasks" viewBox="0 0 24 24"><rect x="4" y="3.5" width="16" height="17" rx="3"/><path d="M8 9l1.5 1.5L12.2 8M8 15l1.5 1.5 2.7-2.5M14.6 9.6H17M14.6 15.6H17"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3 19.5c.6-3.3 3-5 6-5s5.4 1.7 6 5"/><path d="M15.5 4.9a3.2 3.2 0 0 1 0 6.2M17.5 14.7c2 .6 3.2 2.2 3.5 4.8"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20c.8-3.8 3.7-5.8 7.5-5.8s6.7 2 7.5 5.8"/></symbol>
+  <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13.2 2.8L5.5 13.2h5.8l-1 8 7.7-10.4h-5.8z" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-coins" viewBox="0 0 24 24"><ellipse cx="9" cy="7" rx="5.5" ry="2.6"/><path d="M3.5 7v3.6c0 1.5 2.5 2.6 5.5 2.6s5.5-1.1 5.5-2.6V7"/><path d="M9.5 15.2c.4 1.3 2.7 2.3 5.5 2.3 3 0 5.5-1.1 5.5-2.6V11c0-1.4-2.2-2.5-5-2.6"/><path d="M9.5 15.2v3.4c0 1.5 2.5 2.6 5.5 2.6s5.5-1.1 5.5-2.6v-3.7"/></symbol>
+  <symbol id="i-hand" viewBox="0 0 24 24"><path d="M9 11.5V5a1.6 1.6 0 0 1 3.2 0v5.5m0-1.2a1.6 1.6 0 0 1 3.2 0v1.6m0-.4a1.6 1.6 0 0 1 3.1.2v4.1c0 3.5-2.4 6.2-5.9 6.2h-.9c-2.1 0-3.6-.9-4.8-2.6l-2.4-3.6a1.6 1.6 0 0 1 2.5-2l1 1.2"/></symbol>
+  <symbol id="i-battery" viewBox="0 0 24 24"><rect x="6.5" y="4" width="11" height="17" rx="2.5"/><path d="M10 2.5h4M12 9v6M9 12h6"/></symbol>
+  <symbol id="i-regen" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4.5V9h-4.5"/><path d="M12.6 8.2l-2.7 4.1h2.6l-.5 3.5 2.8-4.2h-2.6z" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-gift" viewBox="0 0 24 24"><rect x="3.5" y="9" width="17" height="11" rx="2"/><path d="M3.5 13h17M12 9v11"/><path d="M12 9c-1.5-3.5-5.5-4.2-5.5-1.6C6.5 9 9 9 12 9zm0 0c1.5-3.5 5.5-4.2 5.5-1.6C17.5 9 15 9 12 9z"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="M21 4L3 11.2l6.3 2.2L17 7.5l-6 6.6.3 5.9 3.2-4.1 4 3.1z"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="11.5" height="11.5" rx="2.5"/><path d="M15.5 8.5V6.5a2 2 0 0 0-2-2H6.5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24"><circle cx="18" cy="5.5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="18.5" r="2.5"/><path d="M8.2 10.8l7.6-4.1M8.2 13.2l7.6 4.1"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-wallet" viewBox="0 0 24 24"><path d="M4 8V7a2.5 2.5 0 0 1 2.5-2.5H17V8"/><rect x="4" y="8" width="16.5" height="11.5" rx="2.5"/><path d="M16.2 13.75h.01"/></symbol>
+  <symbol id="i-convert" viewBox="0 0 24 24"><path d="M4 8h12M12 4l4 4-4 4M20 16H8M12 12l-4 4 4 4"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l7.5 3v5.5c0 4.5-3.2 8-7.5 9.5-4.3-1.5-7.5-5-7.5-9.5V6z"/><path d="M9 12l2 2 4-4"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 12.5h9l1-12.5"/></symbol>
+  <symbol id="i-megaphone" viewBox="0 0 24 24"><path d="M4 10.5v3a1 1 0 0 0 1 1h2l5 4v-13l-5 4H5a1 1 0 0 0-1 1zM16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M20 11.5a7.5 7.5 0 0 1-11 6.6L4 19.5l1.4-4.6A7.5 7.5 0 1 1 20 11.5z"/></symbol>
+  <symbol id="i-tiktok" viewBox="0 0 24 24"><path d="M14 4v10.5a3.5 3.5 0 1 1-3.5-3.5M14 4c.5 2.6 2.4 4.4 5 4.6"/></symbol>
+  <symbol id="i-photo" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2.5"/><path d="M3.5 15l4.5-4.5 4 4 2.5-2.5 6 6M15.5 9.5h.01"/></symbol>
+  <symbol id="i-pdf" viewBox="0 0 24 24"><path d="M7 3.5h7l4 4V20a.5.5 0 0 1-.5.5h-10A.5.5 0 0 1 7 20zM14 3.5V8h4M9.5 13h5M9.5 16.5h3.5"/></symbol>
+  <symbol id="i-sticker" viewBox="0 0 24 24"><path d="M19.5 13V6a1.5 1.5 0 0 0-1.5-1.5H6A1.5 1.5 0 0 0 4.5 6v12A1.5 1.5 0 0 0 6 19.5h7zM19.5 13H15a2 2 0 0 0-2 2v4.5M9 10h.01M15 10h.01M9.5 14c.7.5 1.5.8 2.5.8"/></symbol>
+  <symbol id="i-sound" viewBox="0 0 24 24"><path d="M9 18V6l10-2v12M9 18a2.5 2.5 0 1 1-2.5-2.5H9M19 16a2.5 2.5 0 1 1-2.5-2.5H19"/></symbol>
+  <symbol id="i-qr" viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><path d="M14 14h2.5v2.5H14zM17.5 17.5H20V20h-2.5zM14 20h2M20 14v2"/></symbol>
+  <symbol id="i-money" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M14.6 9.6c-.5-.9-1.5-1.4-2.6-1.4-1.5 0-2.6.8-2.6 1.9 0 2.6 5.2 1.4 5.2 4 0 1.1-1.1 1.9-2.6 1.9-1.2 0-2.2-.5-2.7-1.4M12 6.5v1.7M12 15.8v1.7"/></symbol>
+</svg>
+
+<div class="loading" id="loading">
+  <div><svg><use href="#coin"/></svg><p id="loading-text">Завантаження…</p></div>
+</div>
+
+<main>
+  <!-- ГРА -->
+  <section class="tab active" id="tab-game">
+    <div class="demo" id="demo" hidden>Демо: прогрес не зберігається. Відкрий гру в Telegram — у боті @arawebsite_bot.</div>
+    <div class="player">
+      <div class="avatar" id="g-avatar"></div>
+      <div class="player-info">
+        <b id="g-name">Гравець</b>
+        <div class="lvl-row"><span id="g-level">Рівень 1</span><span id="g-lvlnum"></span></div>
+        <div class="bar"><i id="g-lvlbar"></i></div>
+      </div>
+    </div>
+    <div class="card balance">
+      <svg class="coin-ic"><use href="#coin"/></svg>
+      <div><div class="big" id="g-coins">0</div><div class="hint">Баланс монет</div></div>
+    </div>
+    <div class="duo">
+      <button class="card stat" id="g-energy-card">
+        <span class="tile tone-gold"><svg class="icon"><use href="#i-bolt"/></svg></span>
+        <div><div class="hint">Енергія</div><b id="g-energy">0 / 0</b><div class="sub" id="g-regen"></div></div>
+      </button>
+      <button class="card stat" id="g-passive-card">
+        <span class="tile tone-green"><svg class="icon"><use href="#i-coins"/></svg></span>
+        <div><div class="hint">Пасивний дохід</div><b id="g-passive">0/год</b><div class="sub">навіть офлайн</div></div>
+      </button>
+    </div>
+    <div class="field" id="field">
+      <svg class="scene" viewBox="0 0 400 330" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+        <defs>
+          <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0c2558"/><stop offset=".55" stop-color="#2765ad"/><stop offset="1" stop-color="#79bfe4"/></linearGradient>
+          <linearGradient id="hill1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2f8a52"/><stop offset="1" stop-color="#1f6a3d"/></linearGradient>
+          <linearGradient id="hill2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5cc46c"/><stop offset="1" stop-color="#3a9c50"/></linearGradient>
+        </defs>
+        <rect width="400" height="330" fill="url(#sky)"/>
+        <g fill="#fff" opacity=".9"><circle cx="40" cy="30" r="1.2"/><circle cx="110" cy="18" r="1"/><circle cx="300" cy="26" r="1.3"/><circle cx="360" cy="60" r="1"/><circle cx="210" cy="12" r=".9"/></g>
+        <g fill="#fff" opacity=".16"><ellipse cx="70" cy="84" rx="46" ry="11"/><ellipse cx="330" cy="70" rx="56" ry="12"/></g>
+        <path d="M0 232 Q70 196 150 214 T300 204 T400 210 V330 H0z" fill="url(#hill1)"/>
+        <g transform="translate(305 172)">
+          <path d="M-13 74 L-8 0 H8 L13 74z" fill="#d8b48a"/><path d="M-4 74 V58 a4 4 0 0 1 8 0 V74z" fill="#7a4a2c"/>
+          <path d="M-11 2 L0 -13 L11 2z" fill="#9b5434"/>
+          <g class="blades" transform="translate(0 -2)">
+            <g fill="#f3ead9" stroke="#a5835e" stroke-width="1.2">
+              <path d="M0 0 L3 -46 L-6 -46z"/><path d="M0 0 L46 3 L46 -6z"/><path d="M0 0 L-3 46 L6 46z"/><path d="M0 0 L-46 -3 L-46 6z"/>
+            </g>
+            <circle r="4" fill="#7a4a2c"/>
+          </g>
+        </g>
+        <path d="M0 262 Q110 228 210 252 T400 246 V330 H0z" fill="url(#hill2)"/>
+        <g transform="translate(34 0)"><rect x="34" y="214" width="6" height="22" fill="#6b4a2e"/><circle cx="37" cy="206" r="18" fill="#1e6a3c"/><circle cx="28" cy="214" r="11" fill="#237a45"/>
+          <rect x="70" y="226" width="5" height="16" fill="#6b4a2e"/><circle cx="72.5" cy="220" r="12" fill="#22743f"/></g>
+        <g stroke="#c9a77c" stroke-width="3" stroke-linecap="round"><path d="M0 296 H140"/><path d="M12 284 V306M44 284 V306M76 284 V306M108 284 V306"/></g>
+        <path d="M0 302 Q140 280 280 300 T400 296 V330 H0z" fill="#69d17a"/>
+      </svg>
+      <div class="ring"></div>
+      <button class="big-coin" id="coin" aria-label="Тапнути монету"><svg><use href="#coin"/></svg></button>
+      <div class="per-tap" id="g-pertap">+1 монета за тап</div>
+    </div>
+  </section>
+
+  <!-- ПОКРАЩЕННЯ -->
+  <section class="tab" id="tab-upgrades">
+    <div class="title"><span class="tile tone-blue"><svg class="icon"><use href="#i-up"/></svg></span><h1>Покращення</h1></div>
+    <p class="lead">Прокачуй ферму — і заробляй більше.</p>
+    <div class="list" id="upgrades"></div>
+  </section>
+
+  <!-- ЗАВДАННЯ -->
+  <section class="tab" id="tab-tasks">
+    <div class="title"><span class="tile tone-blue"><svg class="icon"><use href="#i-tasks"/></svg></span><h1>Завдання</h1></div>
+    <p class="lead">Виконуй завдання й отримуй монети.</p>
+    <div class="chips" id="chips">
+      <button class="chip on" data-filter="all">Усі</button>
+      <button class="chip" data-filter="daily">Щоденні</button>
+      <button class="chip" data-filter="once">Одноразові</button>
+    </div>
+    <div class="list" id="tasks"></div>
+  </section>
+
+  <!-- ДРУЗІ -->
+  <section class="tab" id="tab-friends">
+    <div class="title"><span class="tile tone-blue"><svg class="icon"><use href="#i-users"/></svg></span><h1>Друзі</h1></div>
+    <p class="lead">Запрошуй друзів — і отримуй бонуси.</p>
+    <div class="card ref">
+      <div class="hint">Твоє посилання</div>
+      <div class="ref-link"><span id="ref-link">…</span>
+        <button id="copy" aria-label="Скопіювати посилання"><svg class="icon"><use href="#i-copy"/></svg></button></div>
+      <button class="btn" id="share"><svg class="icon"><use href="#i-share"/></svg>Поділитися посиланням</button>
+      <div class="how" id="how"></div>
+    </div>
+    <div class="counts">
+      <div class="card stat"><span class="tile tone-blue"><svg class="icon"><use href="#i-users"/></svg></span>
+        <div><div class="sub">Запрошено друзів</div><b id="f-count">0</b></div></div>
+      <div class="card stat"><span class="tile tone-gold"><svg class="coin-ic"><use href="#coin"/></svg></span>
+        <div><div class="sub">Отримано бонусів</div><b id="f-bonus">0</b></div></div>
+    </div>
+    <h2>Твої друзі</h2>
+    <div class="list" id="friends"></div>
+  </section>
+
+  <!-- ПРОФІЛЬ -->
+  <section class="tab" id="tab-profile">
+    <div class="me">
+      <div class="avatar" id="p-avatar"></div>
+      <div style="flex:1;min-width:0">
+        <b id="p-name">Гравець</b>
+        <div class="hint" id="p-id"></div>
+        <div class="lvl-row" style="margin-top:6px"><span id="p-level">Рівень 1</span><span id="p-lvlnum"></span></div>
+        <div class="bar"><i id="p-lvlbar"></i></div>
+      </div>
+    </div>
+    <div class="grid2">
+      <div class="card stat"><span class="tile tone-gold"><svg class="coin-ic"><use href="#coin"/></svg></span><div><div class="sub">Баланс</div><b id="p-coins">0</b></div></div>
+      <div class="card stat"><span class="tile tone-orange"><svg class="icon"><use href="#i-coins"/></svg></span><div><div class="sub">Усього зароблено</div><b id="p-earned">0</b></div></div>
+      <div class="card stat"><span class="tile tone-blue"><svg class="icon"><use href="#i-users"/></svg></span><div><div class="sub">Запрошено друзів</div><b id="p-invited">0</b></div></div>
+      <div class="card stat"><span class="tile tone-green"><svg class="icon"><use href="#i-gift"/></svg></span><div><div class="sub">Отримано бонусів</div><b id="p-bonus">0</b></div></div>
+    </div>
+    <div class="card menu">
+      <button data-page="features"><span class="tile tone-blue"><svg class="icon"><use href="#i-convert"/></svg></span><span class="grow"><b>Що вміє бот</b><div class="hint">Конвертер: TikTok, фото, PDF, QR, валюти</div></span><svg class="icon chev"><use href="#i-chev"/></svg></button>
+      <button data-page="payouts"><span class="tile tone-teal"><svg class="icon"><use href="#i-wallet"/></svg></span><span class="grow"><b>Виплати TON</b><div class="hint">Поки вимкнено</div></span><svg class="icon chev"><use href="#i-chev"/></svg></button>
+      <button id="channel"><span class="tile tone-violet"><svg class="icon"><use href="#i-megaphone"/></svg></span><span class="grow"><b>Канал AraWebsite</b><div class="hint">Новини бота й гри</div></span><svg class="icon chev"><use href="#i-chev"/></svg></button>
+      <button id="privacy"><span class="tile tone-green"><svg class="icon"><use href="#i-shield"/></svg></span><span class="grow"><b>Політика конфіденційності</b></span><svg class="icon chev"><use href="#i-chev"/></svg></button>
+      <button id="reset"><span class="tile tone-red"><svg class="icon"><use href="#i-trash"/></svg></span><span class="grow danger"><b>Видалити мій прогрес</b></span></button>
+    </div>
+    <p class="foot">Ara Farm — гра в боті Ara Converter</p>
+  </section>
+</main>
+
+<nav class="tabbar" id="tabbar">
+  <button class="on" data-tab="game"><svg class="icon"><use href="#i-game"/></svg>Гра</button>
+  <button data-tab="upgrades"><svg class="icon"><use href="#i-up"/></svg>Покращення</button>
+  <button data-tab="tasks"><svg class="icon"><use href="#i-tasks"/></svg>Завдання</button>
+  <button data-tab="friends"><svg class="icon"><use href="#i-users"/></svg>Друзі</button>
+  <button data-tab="profile"><svg class="icon"><use href="#i-user"/></svg>Профіль</button>
+</nav>
+
+<!-- Сторінка «Що вміє бот» (раніше — уся сторінка застосунку) -->
+<div class="page" id="page-features">
+  <main>
+    <button class="back" data-close><svg class="icon"><use href="#i-chev"/></svg>Назад</button>
+    <div class="title"><span class="tile tone-blue"><svg class="icon"><use href="#i-convert"/></svg></span><h1>Що вміє бот</h1></div>
+    <p class="lead">Надішли боту посилання, фото, відео чи текст — і він покаже, що можна зробити.</p>
+    <div class="card feature"><span class="tile tone-pink"><svg class="icon"><use href="#i-tiktok"/></svg></span><div><b>TikTok без водяного знака</b><p>Надішли посилання — отримаєш <em>відео без водяного знака</em> і <em>окремо звук</em>. Пости з фото — альбомом.</p></div></div>
+    <div class="card feature"><span class="tile tone-blue"><svg class="icon"><use href="#i-photo"/></svg></span><div><b>Стиснення фото</b><p>Надішли фото <em>файлом</em> і вибери розмір — від 5 МБ до 50 КБ. Або напиши розмір у підписі, наприклад <em>«300 кб»</em>.</p></div></div>
+    <div class="card feature"><span class="tile tone-orange"><svg class="icon"><use href="#i-pdf"/></svg></span><div><b>Фото → PDF, скан і JPG</b><p>Одне фото чи <em>цілий альбом</em> — в один PDF. <em>«Скан документа»</em> — чорно-білий PDF, як зі сканера. PNG, WEBP — <em>у JPG</em>: надішли їх <em>саме файлом</em>.</p></div></div>
+    <div class="card feature"><span class="tile tone-gold"><svg class="icon"><use href="#i-sticker"/></svg></span><div><b>Стікери й емодзі з фото</b><p><em>«Стікер»</em> чи <em>«Емодзі»</em> під фото — бот прибере фон і додасть у <em>твій власний набір</em>. Або зробить <em>мозаїку</em> з 9 чи 25 емодзі. Надсилати власні емодзі можна лише з <em>Telegram Premium</em>.</p></div></div>
+    <div class="card feature"><span class="tile tone-green"><svg class="icon"><use href="#i-sound"/></svg></span><div><b>Звук із відео</b><p>Надішли відео до 20 МБ — отримаєш <em>звук окремим файлом</em> без втрати якості.</p></div></div>
+    <div class="card feature"><span class="tile tone-violet"><svg class="icon"><use href="#i-qr"/></svg></span><div><b>QR-код і латиниця</b><p>Надішли <em>текст чи посилання</em> — отримаєш QR-код. Український текст — ще й <em>латиницею, як у закордонному паспорті</em>: Ярослав → Yaroslav.</p></div></div>
+    <div class="card feature"><span class="tile tone-teal"><svg class="icon"><use href="#i-money"/></svg></span><div><b>Курс валют НБУ</b><p>Напиши <em>«100 usd»</em>, <em>«50 євро»</em> чи <em>«1000 грн в злоті»</em> — переведу за офіційним курсом. <em>«Курс»</em> — курс на сьогодні.</p></div></div>
+    <div style="margin-top:16px"><button class="btn" id="to-bot"><svg class="icon"><use href="#i-chat"/></svg>Перейти в чат із ботом</button></div>
+  </main>
+</div>
+
+<!-- Сторінка «Виплати TON» -->
+<div class="page" id="page-payouts">
+  <main>
+    <button class="back" data-close><svg class="icon"><use href="#i-chev"/></svg>Назад</button>
+    <div class="title"><span class="tile tone-teal"><svg class="icon"><use href="#i-wallet"/></svg></span><h1>Виплати TON</h1><span class="badge-off">Вимкнено</span></div>
+    <svg class="wallet-art" viewBox="0 0 150 110" aria-hidden="true">
+      <rect x="18" y="30" width="114" height="72" rx="14" fill="#2a7de1"/><rect x="18" y="30" width="114" height="20" rx="10" fill="#1f63bd"/>
+      <rect x="92" y="56" width="44" height="26" rx="9" fill="#1a55a8"/><circle cx="106" cy="69" r="5" fill="#ffd257"/>
+      <g transform="translate(70 4) scale(.34)"><use href="#coin"/></g><g transform="translate(96 14) scale(.26)"><use href="#coin"/></g>
+    </svg>
+    <h2 style="text-align:center;margin-top:10px">Реальні виплати ще не запущені</h2>
+    <p class="lead" style="text-align:center">Зараз гра працює в тестовому режимі: монети ігрові, обміняти їх на гроші чи криптовалюту поки не можна. Якщо виплати з'являться, ми заздалегідь напишемо про це в каналі AraWebsite — разом з умовами.</p>
+    <button class="btn ghost" id="payout-channel"><svg class="icon"><use href="#i-megaphone"/></svg>Стежити в каналі</button>
+    <h2>Що потрібно для запуску виплат</h2>
+    <div class="card" style="padding:16px">
+      <ul class="checks">
+        <li><svg class="icon"><use href="#i-check"/></svg>Підключення гаманця через TON Connect</li>
+        <li><svg class="icon"><use href="#i-check"/></svg>Курс обміну монет і мінімальна сума виплати</li>
+        <li><svg class="icon"><use href="#i-check"/></svg>Захист від ботів і накруток</li>
+        <li><svg class="icon"><use href="#i-check"/></svg>Заявки на виплату та їхні статуси</li>
+      </ul>
+    </div>
+  </main>
+</div>
+
+<div class="backdrop" id="backdrop"></div>
+<div class="sheet" id="sheet" role="dialog"><button class="x" data-close aria-label="Закрити"><svg class="icon"><use href="#i-x"/></svg></button><div id="sheet-body"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+  const tg = window.Telegram?.WebApp;
+  const inTelegram = Boolean(tg?.initData);
+  const $ = (id) => document.getElementById(id);
+  const BOT_LINK = "https://t.me/arawebsite_bot";
+  const CHANNEL_LINK = "https://t.me/arawebsite";
+  const SHARE_TEXT = "Тапай монети разом зі мною в Ara Farm! За вхід за моїм посиланням — +500 монет.";
+  const nf = new Intl.NumberFormat("uk-UA");
+  const fmt = (n) => nf.format(Math.floor(n));
+  const dec = (n) => String(n).replace(".", ",");
+  const icon = (id, cls = "icon") => `<svg class="${cls}"><use href="#${id}"/></svg>`;
+  const coin = (cls = "coin-ic") => `<svg class="${cls}"><use href="#coin"/></svg>`;
+
+  // ---- Telegram ----
+  function haptic(kind) {
+    const h = tg?.HapticFeedback;
+    if (!h) return;
+    if (kind === "light") h.impactOccurred("light");
+    else if (kind === "select") h.selectionChanged();
+    else h.notificationOccurred(kind); // success | error | warning
+  }
+  const openTg = (url) => (inTelegram ? tg.openTelegramLink(url) : window.open(url, "_blank", "noopener"));
+  const openWeb = (url) => (inTelegram ? tg.openLink(url) : window.open(url, "_blank", "noopener"));
+
+  let toastTimer;
+  function toast(text) {
+    const el = $("toast");
+    el.textContent = text;
+    el.classList.add("on");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove("on"), 2600);
+  }
+
+  // ---- Стан і сервер ----
+  let S = null; // стан гравця з сервера (+ місцеві тапи й енергія між синхронізаціями)
+  let pending = 0; // тапи, ще не надіслані
+  let passiveF = 0; // пасивний дохід, що набіг локально з останньої відповіді сервера
+  let refLink = "";
+  let queue = Promise.resolve(); // запити — по одному, щоб не заважали один одному
+
+  function call(path, body = {}) {
+    const run = async () => {
+      if (!inTelegram) return demoApi(path, body);
+      const res = await fetch(`/api/${path}`, {
+        method: "POST", headers: { "content-type": "application/json" }, keepalive: path === "tap",
+        body: JSON.stringify({ auth: tg.initData, ...body }),
+      });
+      const data = await res.json().catch(() => ({}));
+      return { status: res.status, ...data };
+    };
+    const p = queue.then(run, run);
+    queue = p.catch(() => {});
+    return p;
+  }
+
+  // Стан із сервера + тапи, які людина зробила, поки йшов запит.
+  function adopt(state) {
+    S = { ...state };
+    passiveF = 0;
+    S.coins += pending * S.perTap;
+    S.earned += pending * S.perTap;
+    S.energy = Math.max(0, S.energy - pending);
+    render();
+  }
+
+  async function flush() {
+    if (!pending || !S) return;
+    const taps = pending;
+    pending = 0;
+    const res = await call("tap", { taps }).catch(() => null);
+    if (res?.state) adopt(res.state);
+    else pending += taps; // немає зв'язку — надішлемо пізніше
+  }
+  setInterval(flush, 3000);
+  document.addEventListener("visibilitychange", () => document.hidden && flush());
+
+  // Енергія й пасивний дохід ростуть на очах; сервер рахує те саме й поправляє при синхронізації.
+  let last = performance.now();
+  setInterval(() => {
+    const now = performance.now();
+    const dt = (now - last) / 1000;
+    last = now;
+    if (!S) return;
+    S.energy = Math.min(S.energyMax, S.energy + S.regen * dt);
+    passiveF += (S.passive * dt) / 3600;
+    renderLive();
+  }, 250);
+
+  // ---- Тапи ----
+  const coinEl = $("coin");
+  function tap(e) {
+    e.preventDefault();
+    if (!S) return;
+    if (S.energy < 1) {
+      haptic("error");
+      coinEl.classList.remove("shake");
+      void coinEl.offsetWidth;
+      coinEl.classList.add("shake");
+      toast("Енергія скінчилась — вона відновлюється сама");
+      return;
+    }
+    S.energy -= 1;
+    S.coins += S.perTap;
+    S.earned += S.perTap;
+    pending++;
+    const r = coinEl.getBoundingClientRect();
+    const dx = (e.clientX - r.left) / r.width - 0.5;
+    const dy = (e.clientY - r.top) / r.height - 0.5;
+    coinEl.style.transform = `perspective(600px) rotateX(${-dy * 22}deg) rotateY(${dx * 22}deg) scale(.96)`;
+    setTimeout(() => (coinEl.style.transform = ""), 90);
+    const f = document.createElement("div");
+    f.className = "float";
+    f.textContent = `+${S.perTap}`;
+    f.style.left = `${e.clientX}px`;
+    f.style.top = `${e.clientY}px`;
+    document.body.append(f);
+    setTimeout(() => f.remove(), 900);
+    haptic("light");
+    renderLive();
+    if (pending >= 150) flush();
+  }
+  coinEl.addEventListener("pointerdown", tap);
+  coinEl.addEventListener("contextmenu", (e) => e.preventDefault());
+
+  // ---- Відображення ----
+  function avatar(el, name, photo) {
+    el.textContent = "";
+    const initials = () => (el.textContent = (name || "?").trim().split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase());
+    if (photo) {
+      const img = new Image();
+      img.alt = "";
+      img.referrerPolicy = "no-referrer";
+      img.onerror = initials;
+      img.src = photo;
+      el.append(img);
+    } else initials();
+  }
+
+  function levelBar(prefix) {
+    $(`${prefix}-level`).textContent = `Рівень ${S.level}`;
+    if (S.to) {
+      const have = Math.min(S.earned, S.to) - S.from;
+      $(`${prefix}-lvlnum`).textContent = `${fmt(have)} / ${fmt(S.to - S.from)}`;
+      $(`${prefix}-lvlbar`).style.width = `${Math.min(100, (have / (S.to - S.from)) * 100)}%`;
+    } else {
+      $(`${prefix}-lvlnum`).textContent = "Максимум";
+      $(`${prefix}-lvlbar`).style.width = "100%";
+    }
+  }
+
+  const coinsNow = () => S.coins + Math.floor(passiveF);
+
+  function renderLive() {
+    $("g-coins").textContent = fmt(coinsNow());
+    $("g-energy").textContent = `${fmt(S.energy)} / ${fmt(S.energyMax)}`;
+    coinEl.classList.toggle("tired", S.energy < 1);
+    levelBar("g");
+  }
+
+  function render() {
+    if (!S) return;
+    renderLive();
+    $("g-name").textContent = S.name;
+    $("g-regen").textContent = `+${dec(S.regen)} щосекунди`;
+    $("g-passive").textContent = `${fmt(S.passive)}/год`;
+    $("g-pertap").textContent = `+${S.perTap} ${S.perTap === 1 ? "монета" : S.perTap < 5 ? "монети" : "монет"} за тап`;
+    renderUpgrades();
+    renderTasks();
+    renderFriendsHeader();
+    renderProfile();
+  }
+
+  // ---- Покращення ----
+  const UPG = {
+    tap: { title: "Більше монет за тап", icon: "i-hand", tone: "tone-gold", show: (v) => `+${v}`, about: "Скільки монет приносить один тап по монеті." },
+    energy: { title: "Максимальна енергія", icon: "i-battery", tone: "tone-green", show: (v) => fmt(v), about: "Скільки тапів можна зробити поспіль, поки енергія не скінчиться." },
+    regen: { title: "Швидкість відновлення", icon: "i-regen", tone: "tone-orange", show: (v) => `${dec(v)}/с`, about: "Скільки енергії повертається щосекунди." },
+    passive: { title: "Пасивний дохід", icon: "i-coins", tone: "tone-teal", show: (v) => `${fmt(v)}/год`, about: "Ферма заробляє сама, навіть коли тебе немає в грі (до 8 годин поспіль)." },
+  };
+
+  function renderUpgrades() {
+    $("upgrades").innerHTML = Object.entries(UPG).map(([kind, u]) => {
+      const x = S.upgrades[kind];
+      const change = x.next == null ? u.show(x.value) : `${u.show(x.value)} → ${u.show(x.next)}`;
+      const price = x.cost == null ? `<span class="done-tag">Максимум</span>`
+        : `<span class="pill price ${coinsNow() < x.cost ? "poor" : ""}">${coin()}${fmt(x.cost)}</span>`;
+      return `<button class="card row" data-upgrade="${kind}"><span class="tile ${u.tone}">${icon(u.icon)}</span>
+        <span class="grow"><b>${u.title}</b><div class="change plus">${change}</div><div class="meta">Рівень ${x.level}/${S.maxLevel}</div></span>${price}</button>`;
+    }).join("");
+  }
+
+  $("upgrades").addEventListener("click", (e) => {
+    const kind = e.target.closest("[data-upgrade]")?.dataset.upgrade;
+    if (kind) openUpgrade(kind);
+  });
+
+  function openUpgrade(kind) {
+    const u = UPG[kind];
+    const x = S.upgrades[kind];
+    const lack = x.cost == null ? 0 : x.cost - coinsNow();
+    openSheet(`
+      <div class="tile hero-tile ${u.tone}">${icon(u.icon)}</div>
+      <h3>${u.title}</h3>
+      <div class="change">${x.next == null ? u.show(x.value) : `${u.show(x.value)} → ${u.show(x.next)}`}</div>
+      <div class="hint">Рівень ${x.level}/${S.maxLevel}</div>
+      <p>${u.about}</p>
+      ${x.cost == null ? `<button class="btn" disabled>Максимальний рівень</button>`
+        : `<div class="cost"><span>Вартість</span><b>${coin()}${fmt(x.cost)}</b></div>
+           <button class="btn" id="buy" ${lack > 0 ? "disabled" : ""}>${lack > 0 ? `Не вистачає ${fmt(lack)}` : "Купити"}</button>`}`);
+    $("buy")?.addEventListener("click", () => buy(kind));
+  }
+
+  async function buy(kind) {
+    $("buy").disabled = true;
+    await flush();
+    const res = await call("upgrade", { kind }).catch(() => null);
+    if (res?.state) adopt(res.state);
+    if (res?.status === 200) {
+      haptic("success");
+      closeAll();
+      toast(`Покращено: ${UPG[kind].title.toLowerCase()}`);
+    } else {
+      haptic("error");
+      toast(res?.error === "coins" ? "Не вистачає монет" : res?.error === "max" ? "Це вже максимальний рівень" : "Не вдалося — спробуй ще раз");
+      if (res?.state) openUpgrade(kind);
+    }
+  }
+
+  // ---- Завдання ----
+  const TASKS = [
+    { id: "daily", kind: "daily", icon: "i-gift", tone: "tone-gold", title: "Щоденний вхід", about: "Заходь у гру щодня" },
+    { id: "channel", kind: "once", icon: "i-send", tone: "tone-blue", title: "Підпишись на канал AraWebsite", about: "Новини бота й гри в Telegram" },
+    { id: "friends3", kind: "once", icon: "i-users", tone: "tone-violet", title: "Запроси 3 друзів", about: "Друзі мають зайти в гру за твоїм посиланням" },
+  ];
+  let taskFilter = "all";
+  let channelOpened = false;
+
+  function renderTasks() {
+    $("tasks").innerHTML = TASKS.filter((t) => taskFilter === "all" || t.kind === taskFilter).map((t) => {
+      const s = S.tasks[t.id];
+      let action;
+      if (s.done) action = `<span class="done-tag">${icon("i-check")}Виконано</span>`;
+      else if (t.id === "channel") action = `<button class="small-btn" data-task="channel">${channelOpened ? "Перевірити" : "Перейти"}</button>`;
+      else if (t.id === "friends3" && s.progress < s.target) action = `<button class="small-btn" data-task="invite">Запросити</button>`;
+      else action = `<button class="small-btn" data-task="${t.id}">Отримати</button>`;
+      const progress = t.id === "friends3" && !s.done
+        ? `<div class="progress"><span class="bar"><i style="width:${(s.progress / s.target) * 100}%"></i></span>${s.progress}/${s.target}</div>` : "";
+      return `<div class="card row"><span class="tile ${t.tone}">${icon(t.icon)}</span>
+        <span class="grow"><b>${t.title}</b><div class="meta">${t.about}</div>
+        <div class="meta" style="display:flex;align-items:center;gap:5px;color:var(--text);font-weight:700">${coin("coin-ic")}+${fmt(s.reward)}</div>${progress}</span>${action}</div>`;
+    }).join("");
+  }
+
+  $("chips").addEventListener("click", (e) => {
+    const chip = e.target.closest("[data-filter]");
+    if (!chip) return;
+    taskFilter = chip.dataset.filter;
+    document.querySelectorAll(".chip").forEach((c) => c.classList.toggle("on", c === chip));
+    haptic("select");
+    renderTasks();
+  });
+
+  $("tasks").addEventListener("click", async (e) => {
+    const id = e.target.closest("[data-task]")?.dataset.task;
+    if (!id) return;
+    if (id === "invite") return showTab("friends");
+    if (id === "channel" && !channelOpened) {
+      channelOpened = true;
+      openTg(CHANNEL_LINK);
+      setTimeout(renderTasks, 600);
+      return;
+    }
+    e.target.disabled = true;
+    await flush();
+    const res = await call("task", { id }).catch(() => null);
+    if (res?.state) adopt(res.state);
+    if (res?.status === 200) {
+      haptic("success");
+      toast(`+${fmt(S.tasks[id].reward)} монет`);
+    } else {
+      haptic("error");
+      const why = { not_member: "Підписки поки не видно — підпишись і натисни ще раз", not_enough: "Поки замало друзів", done: "Уже виконано" };
+      toast(why[res?.error] ?? "Не вдалося — спробуй ще раз");
+      renderTasks();
+    }
+  });
+
+  // ---- Друзі ----
+  function renderFriendsHeader() {
+    $("ref-link").textContent = refLink.replace(/^https:\/\//, "");
+    $("f-count").textContent = fmt(S.invited);
+    $("f-bonus").textContent = fmt(S.refBonus);
+    const r = S.rewards;
+    $("how").innerHTML =
+      `<div>${icon("i-gift")}<span>Тобі — <b class="plus">+${fmt(r.friend)}</b> за кожного друга</span></div>` +
+      `<div>${icon("i-bolt")}<span>Якщо в друга Telegram Premium — <b class="plus">+${fmt(r.friendPremium)}</b></span></div>` +
+      `<div>${icon("i-users")}<span>Другу — <b class="plus">+${fmt(r.welcome)}</b> на старт</span></div>`;
+  }
+
+  async function loadFriends() {
+    const res = await call("friends").catch(() => null);
+    const list = $("friends");
+    list.textContent = "";
+    if (!res?.friends?.length) {
+      list.innerHTML = `<div class="card empty">Поки нікого. Поділись посиланням — і друзі з'являться тут.</div>`;
+      return;
+    }
+    for (const f of res.friends) {
+      const row = document.createElement("div");
+      row.className = "card row friend";
+      row.innerHTML = `<div class="avatar"></div><span class="grow"><b></b><div class="meta"></div></span><span class="plus"></span>`;
+      avatar(row.querySelector(".avatar"), f.name, f.photo);
+      row.querySelector("b").textContent = f.name;
+      row.querySelector(".meta").textContent = f.premium ? "Telegram Premium" : "Грає";
+      row.querySelector(".plus").textContent = `+${fmt(f.ref_reward)}`;
+      list.append(row);
+    }
+  }
+
+  $("share").addEventListener("click", () => {
+    haptic("select");
+    openTg(`https://t.me/share/url?url=${encodeURIComponent(refLink)}&text=${encodeURIComponent(SHARE_TEXT)}`);
+  });
+  $("copy").addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(refLink);
+      haptic("success");
+      toast("Посилання скопійовано");
+    } catch {
+      toast(refLink);
+    }
+  });
+
+  // ---- Профіль ----
+  function renderProfile() {
+    $("p-name").textContent = S.name;
+    $("p-id").textContent = `ID: ${S.id}`;
+    $("p-coins").textContent = fmt(coinsNow());
+    $("p-earned").textContent = fmt(S.earned);
+    $("p-invited").textContent = fmt(S.invited);
+    $("p-bonus").textContent = fmt(S.refBonus);
+    levelBar("p");
+  }
+
+  document.querySelectorAll("[data-page]").forEach((b) => b.addEventListener("click", () => openPage(b.dataset.page)));
+  $("channel").addEventListener("click", () => openTg(CHANNEL_LINK));
+  $("payout-channel").addEventListener("click", () => openTg(CHANNEL_LINK));
+  $("to-bot").addEventListener("click", () => openTg(BOT_LINK));
+  $("privacy").addEventListener("click", () => openWeb(new URL("/privacy", location.href).href));
+  $("reset").addEventListener("click", () => {
+    const text = "Видалити весь прогрес у грі? Монети, покращення й друзі зникнуть назавжди.";
+    const go = async (ok) => {
+      if (!ok) return;
+      pending = 0;
+      await call("delete").catch(() => null);
+      toast("Прогрес видалено");
+      setTimeout(() => location.reload(), 900);
+    };
+    if (inTelegram && tg.showConfirm) tg.showConfirm(text, go);
+    else go(window.confirm(text));
+  });
+
+  // ---- Енергія (аркуш) ----
+  function openEnergy() {
+    const left = S.energyMax - S.energy;
+    const secs = Math.ceil(left / S.regen);
+    const full = secs <= 0 ? "Енергія повна" : `Повна через ${secs >= 60 ? `${Math.floor(secs / 60)} хв ` : ""}${secs % 60} с`;
+    const c = 2 * Math.PI * 72;
+    openSheet(`
+      <h3 style="margin-top:0">Енергія</h3>
+      <div class="gauge"><svg viewBox="0 0 170 170"><circle cx="85" cy="85" r="72" fill="none" stroke="rgba(255,255,255,.1)" stroke-width="12"/>
+        <circle cx="85" cy="85" r="72" fill="none" stroke="#3b97ff" stroke-width="12" stroke-linecap="round"
+          stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - S.energy / S.energyMax)}"/></svg>
+        <div><span class="tile tone-gold" style="margin:0 auto 4px;width:38px;height:38px">${icon("i-bolt")}</span><b>${fmt(S.energy)} / ${fmt(S.energyMax)}</b></div></div>
+      <div class="hint">Відновлення: +${dec(S.regen)} щосекунди · ${full}</div>
+      <div class="card row" style="margin-top:16px;text-align:left"><span class="tile tone-green">${icon("i-coins")}</span>
+        <span class="grow"><b>Пасивний дохід: ${fmt(S.passive)}/год</b><div class="meta">Нараховується, навіть коли тебе немає, — до ${S.passiveCapHours} годин поспіль</div></span></div>
+      <p style="margin-bottom:0">Заходь хоча б раз на ${S.passiveCapHours} годин, щоб ферма не простоювала.</p>`);
+  }
+  $("g-energy-card").addEventListener("click", openEnergy);
+  $("g-passive-card").addEventListener("click", openEnergy);
+
+  // ---- Вкладки, аркуш, сторінки ----
+  function showTab(name) {
+    document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.id === `tab-${name}`));
+    document.querySelectorAll("#tabbar button").forEach((b) => b.classList.toggle("on", b.dataset.tab === name));
+    window.scrollTo(0, 0);
+    if (name === "friends") loadFriends();
+    if (name !== "game") flush();
+  }
+  $("tabbar").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-tab]");
+    if (!b) return;
+    haptic("select");
+    showTab(b.dataset.tab);
+  });
+
+  function overlayChanged() {
+    const open = document.querySelector(".sheet.on, .page.on");
+    if (!inTelegram) return;
+    if (open) tg.BackButton.show();
+    else tg.BackButton.hide();
+  }
+  function openSheet(html) {
+    $("sheet-body").innerHTML = html;
+    $("sheet").classList.add("on");
+    $("backdrop").classList.add("on");
+    overlayChanged();
+  }
+  function openPage(name) {
+    haptic("select");
+    $(`page-${name}`).classList.add("on");
+    overlayChanged();
+  }
+  function closeAll() {
+    const sheet = $("sheet");
+    if (sheet.classList.contains("on")) {
+      sheet.classList.remove("on");
+      $("backdrop").classList.remove("on");
+    } else document.querySelector(".page.on")?.classList.remove("on");
+    overlayChanged();
+  }
+  $("backdrop").addEventListener("click", closeAll);
+  document.querySelectorAll("[data-close]").forEach((b) => b.addEventListener("click", closeAll));
+
+  // ---- Демо поза Telegram (лише щоб подивитись; нічого не зберігається) ----
+  let demo = null;
+  function demoApi(path, body) {
+    const now = Date.now();
+    demo ??= {
+      id: 0, name: "Гравець", photo: null, coins: 1250, earned: 1250, level: 2, from: 1000, to: 5000,
+      energy: 430, energyMax: 500, regen: 1, perTap: 1, passive: 10, passiveCapHours: 8, maxLevel: 10, invited: 1, refBonus: 1000,
+      upgrades: { tap: { level: 1, value: 1, next: 2, cost: 200 }, energy: { level: 1, value: 500, next: 750, cost: 300 },
+        regen: { level: 1, value: 1, next: 1.5, cost: 400 }, passive: { level: 1, value: 10, next: 25, cost: 500 } },
+      tasks: { daily: { reward: 500, done: false }, channel: { reward: 1000, done: false }, friends3: { reward: 2500, done: false, progress: 1, target: 3 } },
+      rewards: { friend: 1000, friendPremium: 2500, welcome: 500 }, at: now,
+    };
+    const d = demo;
+    d.energy = Math.min(d.energyMax, d.energy + (d.regen * (now - d.at)) / 1000);
+    d.at = now;
+    const out = (extra = {}, status = 200) => ({ status, state: JSON.parse(JSON.stringify(d)), ...extra });
+    if (path === "me") return out({ refLink: `${BOT_LINK}?startapp=ref_0` });
+    if (path === "tap") {
+      const n = Math.min(body.taps, Math.floor(d.energy));
+      d.energy -= n;
+      d.coins += n * d.perTap;
+      d.earned += n * d.perTap;
+      return out({ accepted: n });
+    }
+    if (path === "upgrade") {
+      const x = d.upgrades[body.kind];
+      if (d.coins < x.cost) return out({ error: "coins" }, 409);
+      d.coins -= x.cost;
+      x.level += 1;
+      x.value = x.next;
+      x.next = Math.round(x.next * 1.6 * 2) / 2;
+      x.cost = Math.round(x.cost * 2.2);
+      const key = { tap: "perTap", energy: "energyMax", regen: "regen", passive: "passive" }[body.kind];
+      d[key] = x.value;
+      return out();
+    }
+    if (path === "task") {
+      const t = d.tasks[body.id];
+      if (body.id === "friends3" && t.progress < t.target) return out({ error: "not_enough" }, 409);
+      t.done = true;
+      d.coins += t.reward;
+      d.earned += t.reward;
+      return out();
+    }
+    if (path === "friends") return { status: 200, friends: [{ name: "Олена", photo: null, premium: 0, ref_reward: 1000 }] };
+    if (path === "delete") return { status: 200, ok: true };
+    return { status: 404 };
+  }
+
+  // ---- Старт ----
+  async function start() {
+    if (inTelegram) {
+      document.body.classList.add("in-telegram");
+      tg.ready();
+      tg.expand();
+      tg.disableVerticalSwipes?.();
+      try {
+        tg.setHeaderColor("#0a1838");
+        tg.setBackgroundColor("#060f24");
+        tg.setBottomBarColor?.("#071026");
+      } catch {}
+      tg.BackButton.onClick(closeAll);
+    } else {
+      $("demo").hidden = false;
+    }
+    const res = await call("me").catch(() => null);
+    if (!res?.state) {
+      $("loading-text").textContent = res?.status === 401
+        ? "Сесія застаріла — закрий і відкрий гру ще раз."
+        : "Не вдалося завантажити гру. Перевір інтернет і відкрий ще раз.";
+      return;
+    }
+    refLink = res.refLink;
+    adopt(res.state);
+    avatar($("g-avatar"), S.name, S.photo);
+    avatar($("p-avatar"), S.name, S.photo);
+    $("loading").classList.add("off");
+    if (res.welcome) toast(`+${fmt(res.welcome)} монет за вхід за запрошенням`);
+    else if (res.offline > 0) toast(`Поки тебе не було, ферма заробила +${fmt(res.offline)}`);
+  }
+  start();
+</script>
+</body>
+</html>

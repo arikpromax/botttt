@@ -29,9 +29,10 @@ export const OWNER_COMMANDS = [...COMMANDS, { command: "stats", description: "С
 
 // channel — «@username» каналу для обов'язкової підписки; images — Cloudflare Images (env.IMAGES);
 // albums — тимчасове сховище фото з альбомів (albums.js); albumWait — скільки чекати решту фото альбому, мс;
-// stats — знеособлена статистика (stats.js); ownerId — Telegram id власника, лише йому доступна /stats.
+// stats — знеособлена статистика (stats.js); ownerId — Telegram id власника, лише йому доступна /stats;
+// appUrl — адреса Mini App (гра Ara Farm) для кнопки «Грати» в привітанні.
 export function createBot(token, {
-  channel, images, albums = null, stats = null, ownerId = null, albumWait = 2000, fetch = globalThis.fetch, ...config
+  channel, images, albums = null, stats = null, ownerId = null, appUrl = null, albumWait = 2000, fetch = globalThis.fetch, ...config
 }) {
   const bot = new Bot(token, config);
   bot.api.config.use(autoRetry());
@@ -491,8 +492,9 @@ export function createBot(token, {
 
   // ---- Повідомлення ----
 
+  // Привітання; якщо задано appUrl — із кнопкою, що одразу відкриває гру Ara Farm.
   async function sendStart(msg) {
-    await send(msg.chat.id, t.start);
+    await send(msg.chat.id, t.start, appUrl ? { reply_markup: new InlineKeyboard().webApp(t.playButton, appUrl) } : {});
     await track(msg, "start");
   }
 
