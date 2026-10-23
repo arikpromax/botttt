@@ -135,6 +135,17 @@ describe("TikTok", () => {
     assert.ok(!h.fetches.some((f) => /tiktok\.com\//.test(f.url)), "сторінка не потрібна");
   });
 
+  it("відео з обмеженням: сторінка порожня — пробує tikwm, а якщо й там ні, то пояснює", async () => {
+    const restricted = { id: "1", desc: "", video: {}, warnInfo: [{}] };
+    const viaTikwm = harness({ page: restricted, tiktok: tiktokVideo(5 * MB) });
+    assert.ok((await viaTikwm.text(LINK)).some((c) => c.method === "sendVideo"));
+
+    const nowhere = harness({ page: restricted });
+    const calls = await nowhere.text(LINK);
+    assert.ok(!calls.some((c) => c.method === "sendVideo"));
+    assert.match(nowhere.texts(calls), /без входу в акаунт/);
+  });
+
   it("каже, що не вдалося, якщо сервіс не впізнав посилання", async () => {
     const h = harness({ tiktok: { code: -1, msg: "Url parsing is failed!" } });
     assert.match(h.texts(await h.text(LINK)), /Не вдалося завантажити/);

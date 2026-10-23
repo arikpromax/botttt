@@ -6,6 +6,9 @@
 
 import { audioKbps, PROBE_RANGE } from "./mp4.js";
 
+// TikTok не показує відео без входу в акаунт (вікові обмеження тощо).
+export class RestrictedError extends Error {}
+
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
 const UPLOAD_LIMIT = 50 * 1024 * 1024;
 
@@ -33,7 +36,9 @@ async function bestVariant(video, headers, fetch) {
   }));
   const withSound = variants.filter((v) => v.audio > 0);
   withSound.sort((a, b) => b.audio - a.audio || b.h264 - a.h264 || (b.height ?? 0) - (a.height ?? 0));
-  return withSound[0] ?? null;
+  const best = withSound[0] ?? null;
+  // Для журналу: звук кожної версії, наприклад «32/64/0».
+  return best && { ...best, probed: variants.map((v) => v.audio).join("/") };
 }
 
 // Посилання на TikTok у тексті: tiktok.com/@user/video/…, vm.tiktok.com/…, vt.tiktok.com/… тощо.
@@ -63,12 +68,22 @@ export async function fromTikTokPage(url, fetch = globalThis.fetch) {
   const headers = { "user-agent": UA, referer: "https://www.tiktok.com/", cookie };
   const images = (item.imagePost?.images ?? []).map((i) => i.imageURL?.urlList?.[0]).filter(Boolean);
   const v = item.video;
-  const best = images.length || !v?.playAddr ? null : await bestVariant(v, headers, fetch);
+  // Відео з віковими обмеженнями (warnInfo) TikTok без входу в акаунт не показує — сторінка без відео й музики.
+  if (!v?.playAddr && !images.length) throw new RestrictedError("сторінка TikTok: відео приховане без входу в акаунт");
+  const best = images.length ? null : await bestVariant(v, headers, fetch);
+  // Чому немає окремого треку (для журналу): TikTok не дає посилання на захищену авторським правом музику.
+  const noMusic = item.music?.playUrl ? null
+    : !item.music ? "немає музики" : item.music.isCopyrighted ? "музика під авторським правом" : "TikTok не дав посилання";
   return {
     source: "tiktok",
+    id: item.id,
+    note: [
+      v && (best ? `версії зі звуком ${best.probed} кбіт/с` : `версій якості: ${v.bitrateInfo?.length ?? 0}`),
+      noMusic && `без треку: ${noMusic}`,
+    ].filter(Boolean).join("; "),
     title: item.desc ?? "",
     author: item.author?.uniqueId ?? "",
-    video: images.length || !v?.playAddr ? null : {
+    video: images.length ? null : {
       url: best?.url ?? v.playAddr,
       size: best?.size ?? (Number(v.size) || 0),
       headers,
@@ -116,14 +131,18 @@ export async function fromTikwm(url, fetch = globalThis.fetch) {
 
 export const SOURCES = [fromTikwm, fromTikTokPage];
 
+// Перше джерело, що дало відео чи фото. Якщо жодне — помилка; RestrictedError, якщо хоч одне бачило обмеження.
 export async function resolveTikTok(url, fetch = globalThis.fetch, sources = SOURCES) {
   const errors = [];
   for (const source of sources) {
     try {
-      return await source(url, fetch);
+      const post = await source(url, fetch);
+      if (post.video || post.images.length) return post;
+      errors.push(new Error(`${post.source}: немає ні відео, ні фото`));
     } catch (err) {
-      errors.push(err.message);
+      errors.push(err);
     }
   }
-  throw new Error(errors.join("; "));
+  const message = errors.map((e) => e.message).join("; ");
+  throw errors.some((e) => e instanceof RestrictedError) ? new RestrictedError(message) : new Error(message);
 }
